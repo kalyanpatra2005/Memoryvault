@@ -1,0 +1,9 @@
+{
+  "appId": "com.memoryvault.app",
+  "appName": "Memory Vault",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
