@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Lock, Mail, Phone, Calendar, User, Eye, EyeOff, ShieldCheck, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
 
+import { vaultEngine } from '../services/vaultEngine';
+
 export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -33,17 +35,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginForm)
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Login failed. Please check your credentials.');
-      }
-
+      const data = await vaultEngine.login(loginForm);
       localStorage.setItem('vault_token', data.token);
       localStorage.setItem('vault_user', JSON.stringify(data.user));
       onAuthSuccess(data.user, data.token);
@@ -71,17 +63,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(regForm)
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Registration failed.');
-      }
-
+      const data = await vaultEngine.register(regForm);
       localStorage.setItem('vault_token', data.token);
       localStorage.setItem('vault_user', JSON.stringify(data.user));
       setSuccessMsg('Account sealed and created! Entering your private vault...');

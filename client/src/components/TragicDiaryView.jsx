@@ -4,6 +4,7 @@ import {
   Trash2, Plus, Sparkles, Clock, Search, Edit3, Bookmark, Save, ArrowLeft
 } from 'lucide-react';
 import { ambientSound } from '../audio/ambientAudio';
+import { vaultEngine } from '../services/vaultEngine';
 
 const TRAGIC_QUOTES = [
   { text: "There is a pleasure in the pathless woods, There is a rapture on the lonely shore...", author: "Lord Byron" },
@@ -49,12 +50,8 @@ export default function TragicDiaryView({ token, user }) {
   const fetchDiaries = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/diary?search=${encodeURIComponent(searchQuery)}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Failed to load private diary notes');
-      const data = await res.json();
-      setEntries(data.entries || []);
+      const list = await vaultEngine.getDiaries(token, user?.id, searchQuery);
+      setEntries(list || []);
     } catch (err) {
       console.error('Fetch diaries error:', err);
     } finally {
@@ -99,26 +96,18 @@ export default function TragicDiaryView({ token, user }) {
     setSaveSuccess(false);
 
     try {
-      const url = activeEntry ? `/api/diary/${activeEntry.id}` : '/api/diary';
-      const method = activeEntry ? 'PUT' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      await vaultEngine.saveDiary(
+        token,
+        user?.id,
+        {
           title: diaryTitle,
           content: diaryContent,
           mood: diaryMood,
           paper_style: paperStyle,
           entry_date: diaryDate
-        })
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to preserve diary');
+        },
+        activeEntry ? activeEntry.id : null
+      );
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -164,11 +153,7 @@ export default function TragicDiaryView({ token, user }) {
     }
 
     try {
-      const res = await fetch(`/api/diary/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Failed to delete');
+      await vaultEngine.deleteDiary(token, id, user?.id);
       setEntries(entries.filter(e => e.id !== id));
       if (activeEntry && activeEntry.id === id) {
         startNewEntry();

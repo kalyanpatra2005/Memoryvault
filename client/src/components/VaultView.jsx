@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
 import { 
   Image as ImageIcon, Video, Plus, Search, Calendar, Lock, Unlock, 
   Trash2, Download, Eye, Sparkles, Filter, X, Clock, AlertTriangle, ShieldCheck
 } from 'lucide-react';
+import { vaultEngine } from '../services/vaultEngine';
 
 export default function VaultView({ token, user }) {
   const [items, setItems] = useState([]);
@@ -29,12 +29,8 @@ export default function VaultView({ token, user }) {
   const fetchVaultItems = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/vault/items?search=${encodeURIComponent(searchQuery)}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Failed to load private vault items');
-      const data = await res.json();
-      setItems(data.items || []);
+      const vaultItems = await vaultEngine.getVaultItems(token, user?.id, searchQuery);
+      setItems(vaultItems || []);
     } catch (err) {
       console.error('Fetch items error:', err);
     } finally {
@@ -73,23 +69,15 @@ export default function VaultView({ token, user }) {
     setErrorMsg('');
 
     try {
-      const formData = new FormData();
-      formData.append('mediaFile', uploadFile);
-      formData.append('caption', uploadCaption);
-      formData.append('memoryDate', uploadDate);
-      formData.append('tags', uploadTags);
-      if (isTimeCapsule && unlockDate) {
-        formData.append('unlockDate', unlockDate);
-      }
-
-      const res = await fetch('/api/vault/upload', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      await vaultEngine.uploadVaultItem(
+        token,
+        user?.id,
+        uploadFile,
+        uploadCaption,
+        uploadDate,
+        uploadTags,
+        isTimeCapsule && unlockDate ? unlockDate : null
+      );
 
       // Reset Form & Refresh
       setUploadFile(null);
@@ -115,11 +103,7 @@ export default function VaultView({ token, user }) {
 
     try {
       setDeletingId(id);
-      const res = await fetch(`/api/vault/items/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Deletion failed');
+      await vaultEngine.deleteVaultItem(token, id, user?.id);
       setItems(items.filter(item => item.id !== id));
       if (selectedMedia && selectedMedia.id === id) {
         setSelectedMedia(null);

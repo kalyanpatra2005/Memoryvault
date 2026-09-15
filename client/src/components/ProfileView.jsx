@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, User, Mail, Phone, Calendar, Lock, CheckCircle2, 
   HardDrive, FileText, Image as ImageIcon, Video, KeyRound, Award, Heart
 } from 'lucide-react';
+import { vaultEngine } from '../services/vaultEngine';
 
 export default function ProfileView({ token, user, onLogout }) {
   const [profileData, setProfileData] = useState(null);
@@ -12,11 +12,7 @@ export default function ProfileView({ token, user, onLogout }) {
     const fetchProfile = async () => {
       try {
         setLoading(true);
-        const res = await fetch('/api/auth/me', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Failed to load profile');
-        const data = await res.json();
+        const data = await vaultEngine.getProfile(token, user?.id);
         setProfileData(data);
       } catch (err) {
         console.error(err);
@@ -26,7 +22,7 @@ export default function ProfileView({ token, user, onLogout }) {
     };
 
     if (token) fetchProfile();
-  }, [token]);
+  }, [token, user]);
 
   const stats = profileData?.stats || { photos: 0, videos: 0, diaries: 0 };
   const u = profileData?.user || user;

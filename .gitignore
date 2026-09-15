@@ -9,6 +9,8 @@ node_modules/
 # Local databases & uploads
 server/data/*.db
 server/data/*.db-journal
+server/*.sqlite*
+*.sqlite*
 server/uploads/*
 !server/uploads/.gitkeep
 data/
