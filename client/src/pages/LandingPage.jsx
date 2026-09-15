@@ -130,7 +130,7 @@ export default function LandingPage({ onOpenAuth }) {
 
       {/* FOOTER */}
       <footer className="border-t border-stone-900 py-8 text-center text-xs text-stone-500">
-        <p>Memory Vault &copy; 2026. Private, Permanent, and Sacred Personal Archives.</p>
+        <p>Memory Vault &copy; Kalyan 2026. Private, Permanent, and Sacred Personal Archives.</p>
         <p className="mt-1 text-stone-600">All rights reserved. Your data stays strictly yours.</p>
       </footer>
     </div>
