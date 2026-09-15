@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { vaultEngine, safeFetchJson } from '../services/vaultEngine';
 import { BookOpen, Film, Clock, ShieldCheck, HardDrive, ArrowRight, Sparkles, Heart, PlusCircle, Calendar } from 'lucide-react';
 
 export default function Dashboard({ setActiveTab }) {
-  const { user, authFetch } = useAuth();
+  const { user, token, authFetch } = useAuth();
   const [stats, setStats] = useState({
     photos: 0,
     videos: 0,
@@ -21,10 +22,32 @@ export default function Dashboard({ setActiveTab }) {
 
   const fetchStats = async () => {
     try {
-      const res = await authFetch('/api/stats');
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
+      let loadedStats = null;
+      try {
+        const res = await authFetch('/api/stats');
+        const data = await safeFetchJson(res);
+        if (res.ok && data) {
+          loadedStats = data;
+        }
+      } catch (e) {}
+
+      if (!loadedStats) {
+        const profile = await vaultEngine.getProfile(token, user?.id || 'guest');
+        if (profile && profile.stats) {
+          loadedStats = {
+            photos: profile.stats.photos || 0,
+            videos: profile.stats.videos || 0,
+            diaries: profile.stats.diaries || 0,
+            capsules: 0,
+            totalBytes: 0,
+            latestDiary: null,
+            nextCapsule: null
+          };
+        }
+      }
+
+      if (loadedStats) {
+        setStats(loadedStats);
       }
     } catch (err) {
       console.error('Failed to load stats', err);

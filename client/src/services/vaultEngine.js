@@ -13,7 +13,10 @@ if (typeof window !== 'undefined' && navigator.storage && navigator.storage.pers
 const getLocalData = (key, defaultVal = []) => {
   try {
     const raw = localStorage.getItem('vault_storage_' + key);
-    return raw ? JSON.parse(raw) : defaultVal;
+    if (!raw || !raw.trim()) return defaultVal;
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return defaultVal;
+    return JSON.parse(trimmed);
   } catch (e) {
     return defaultVal;
   }
@@ -53,6 +56,70 @@ const openDatabase = () => {
   });
 };
 
+// IndexedDB generic helpers
+export const getIDBStoreData = async (storeName) => {
+  const db = await openDatabase();
+  if (!db) return [];
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction([storeName], 'readonly');
+      const store = tx.objectStore(storeName);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    } catch (e) {
+      resolve([]);
+    }
+  });
+};
+
+export const putIDBStoreItem = async (storeName, item) => {
+  const db = await openDatabase();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction([storeName], 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.put(item);
+      req.onsuccess = () => resolve(item);
+      req.onerror = () => resolve(null);
+    } catch (e) {
+      resolve(null);
+    }
+  });
+};
+
+export const deleteIDBStoreItem = async (storeName, id) => {
+  const db = await openDatabase();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction([storeName], 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.delete(id);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => resolve(false);
+    } catch (e) {
+      resolve(false);
+    }
+  });
+};
+
+// Safe JSON parser to completely prevent "Unexpected token 'T' / '<' ... is not valid JSON"
+export const safeFetchJson = async (res) => {
+  if (!res) return null;
+  try {
+    const text = await res.text();
+    if (!text || !text.trim()) return null;
+    const trimmed = text.trim();
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+      return null;
+    }
+    return JSON.parse(trimmed);
+  } catch (e) {
+    return null;
+  }
+};
 // Cryptographic hash executed BEFORE any transaction
 async function hashPassword(str) {
   if (typeof window === 'undefined' || !window.crypto || !window.crypto.subtle) {
@@ -68,20 +135,6 @@ async function hashPassword(str) {
     return btoa(str);
   }
 }
-
-// Safe JSON parser to avoid "Unexpected token 'T' / '<' ... is not valid JSON"
-const safeJsonParse = async (res) => {
-  if (!res) return null;
-  try {
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      return null;
-    }
-    return await res.json();
-  } catch (e) {
-    return null;
-  }
-};
 
 export const vaultEngine = {
   // ================= AUTHENTICATION =================
@@ -283,22 +336,58 @@ export const vaultEngine = {
 
   // ================= VAULT ITEMS (PHOTOS & VIDEOS) =================
   async getVaultItems(token, userId, search = '') {
+    const map = new Map();
+
+    // 1. Try server first
     try {
       const res = await fetch(`/api/media${search ? `?search=${encodeURIComponent(search)}` : ''}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await safeJsonParse(res);
+      const data = await safeFetchJson(res);
       if (res.ok && data && (data.media || data.items)) {
-        const list = (data.media || data.items).map(item => ({
-          ...item,
-          type: item.media_type || item.type,
-          media_url: item.media_url || `/api/media/stream/${item.id}?token=${token}`
-        }));
-        return list;
+        (data.media || data.items).forEach(item => {
+          map.set(String(item.id), {
+            ...item,
+            type: item.media_type || item.type || 'photo',
+            media_url: item.media_url || `/api/media/stream/${item.id}?token=${token}`
+          });
+        });
       }
     } catch (e) {}
 
-    let items = getLocalData('vault_items', []).filter(i => i.user_id === userId);
+    // 2. Read from IndexedDB (handles gigabytes of photos/videos)
+    try {
+      const idbItems = await getIDBStoreData('vault_items');
+      idbItems.forEach(item => {
+        if (!userId || String(item.user_id) === String(userId)) {
+          if (!map.has(String(item.id))) {
+            map.set(String(item.id), {
+              ...item,
+              type: item.media_type || item.type || 'photo',
+              media_url: item.data_url || item.media_url || item.file_url
+            });
+          }
+        }
+      });
+    } catch (e) {}
+
+    // 3. Read from LocalStorage fallback
+    try {
+      const localItems = getLocalData('vault_items', []);
+      localItems.forEach(item => {
+        if (!userId || String(item.user_id) === String(userId)) {
+          if (!map.has(String(item.id))) {
+            map.set(String(item.id), {
+              ...item,
+              type: item.media_type || item.type || 'photo',
+              media_url: item.data_url || item.media_url || item.file_url
+            });
+          }
+        }
+      });
+    } catch (e) {}
+
+    let items = Array.from(map.values());
 
     if (search) {
       const s = search.toLowerCase();
@@ -315,7 +404,7 @@ export const vaultEngine = {
       return {
         ...item,
         is_locked: !!isLocked,
-        media_url: item.data_url || item.file_url || `/api/media/stream/${item.id}?token=${token}`
+        media_url: item.data_url || item.media_url || item.file_url || `/api/media/stream/${item.id}?token=${token}`
       };
     });
 
@@ -324,6 +413,7 @@ export const vaultEngine = {
   },
 
   async uploadVaultItem(token, userId, file, caption, memoryDate, tags, unlockDate) {
+    // 1. Try server upload first if available
     try {
       const formData = new FormData();
       formData.append('files', file);
@@ -337,7 +427,7 @@ export const vaultEngine = {
         headers: { Authorization: `Bearer ${token}` },
         body: formData
       });
-      const data = await safeJsonParse(res);
+      const data = await safeFetchJson(res);
       if (res.ok && data) {
         if (data.media && data.media.length > 0) {
           const item = data.media[0];
@@ -351,44 +441,49 @@ export const vaultEngine = {
       }
     } catch (e) {}
 
+    // 2. Client-side permanent IndexedDB preservation
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result;
-        const isVideo = file.type.startsWith('video/');
-        const newItem = {
-          id: Date.now(),
-          user_id: userId,
-          type: isVideo ? 'video' : 'photo',
-          media_type: isVideo ? 'video' : 'photo',
-          original_name: file.name,
-          file_size: file.size,
-          size_bytes: file.size,
-          mime_type: file.type,
-          data_url: dataUrl,
-          caption: caption || '',
-          memory_date: memoryDate || new Date().toISOString().split('T')[0],
-          tags: tags || '',
-          unlock_date: unlockDate || null,
-          created_at: new Date().toISOString()
-        };
+      reader.onload = async () => {
+        try {
+          const dataUrl = reader.result;
+          const isVideo = file.type.startsWith('video/');
+          const newItem = {
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            user_id: userId,
+            type: isVideo ? 'video' : 'photo',
+            media_type: isVideo ? 'video' : 'photo',
+            original_name: file.name,
+            file_size: file.size,
+            size_bytes: file.size,
+            mime_type: file.type,
+            data_url: dataUrl,
+            media_url: dataUrl,
+            caption: caption || '',
+            memory_date: memoryDate || new Date().toISOString().split('T')[0],
+            tags: tags || '',
+            unlock_date: unlockDate || null,
+            created_at: new Date().toISOString()
+          };
 
-        const allItems = getLocalData('vault_items', []);
-        allItems.push(newItem);
-        setLocalData('vault_items', allItems);
+          // Store full item in IndexedDB (handles high-res photos & videos)
+          await putIDBStoreItem('vault_items', newItem);
 
-        // Mirror to IDB
-        openDatabase().then(db => {
-          if (db) {
-            try {
-              const tx = db.transaction(['vault_items'], 'readwrite');
-              tx.objectStore('vault_items').put(newItem);
-            } catch (e) {}
-          }
-        });
+          // Store safe metadata in LocalStorage
+          try {
+            const allItems = getLocalData('vault_items', []);
+            const metaCopy = { ...newItem };
+            if (metaCopy.data_url && metaCopy.data_url.length > 100000) {
+              delete metaCopy.data_url;
+            }
+            allItems.push(metaCopy);
+            setLocalData('vault_items', allItems);
+          } catch (e) {}
 
-        newItem.media_url = dataUrl;
-        resolve(newItem);
+          resolve(newItem);
+        } catch (err) {
+          reject(new Error('Failed to permanently store media in vault.'));
+        }
       };
       reader.onerror = () => reject(new Error('Failed to read file for vault preservation.'));
       reader.readAsDataURL(file);
@@ -403,30 +498,56 @@ export const vaultEngine = {
       });
     } catch (e) {}
 
-    const allItems = getLocalData('vault_items', []).filter(i => i.id !== id);
+    try {
+      await deleteIDBStoreItem('vault_items', Number(id) || id);
+    } catch (e) {}
+
+    const allItems = getLocalData('vault_items', []).filter(i => String(i.id) !== String(id));
     setLocalData('vault_items', allItems);
 
-    const db = await openDatabase();
-    if (db) {
-      try {
-        const tx = db.transaction(['vault_items'], 'readwrite');
-        tx.objectStore('vault_items').delete(id);
-      } catch (e) {}
-    }
     return true;
   },
 
   // ================= TRAGIC DIARY =================
   async getDiaries(token, userId, search = '') {
+    const map = new Map();
+
+    // 1. Try server first
     try {
       const res = await fetch(`/api/diary?search=${encodeURIComponent(search)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await safeJsonParse(res);
-      if (res.ok && data && data.entries) return data.entries;
+      const data = await safeFetchJson(res);
+      if (res.ok && data && data.entries) {
+        data.entries.forEach(entry => map.set(String(entry.id), entry));
+      }
     } catch (e) {}
 
-    let list = getLocalData('diary_entries', []).filter(d => d.user_id === userId);
+    // 2. Read from IndexedDB
+    try {
+      const idbDiaries = await getIDBStoreData('diary_entries');
+      idbDiaries.forEach(entry => {
+        if (!userId || String(entry.user_id) === String(userId)) {
+          if (!map.has(String(entry.id))) {
+            map.set(String(entry.id), entry);
+          }
+        }
+      });
+    } catch (e) {}
+
+    // 3. Read from LocalStorage fallback
+    try {
+      const localDiaries = getLocalData('diary_entries', []);
+      localDiaries.forEach(entry => {
+        if (!userId || String(entry.user_id) === String(userId)) {
+          if (!map.has(String(entry.id))) {
+            map.set(String(entry.id), entry);
+          }
+        }
+      });
+    } catch (e) {}
+
+    let list = Array.from(map.values());
 
     if (search) {
       const s = search.toLowerCase();
@@ -436,11 +557,12 @@ export const vaultEngine = {
       );
     }
 
-    list.sort((a, b) => new Date(b.entry_date) - new Date(a.entry_date));
+    list.sort((a, b) => new Date(b.created_at || b.entry_date) - new Date(a.created_at || a.entry_date));
     return list;
   },
 
   async saveDiary(token, userId, diaryData, existingId = null) {
+    // 1. Try server first
     try {
       const url = existingId ? `/api/diary/${existingId}` : '/api/diary';
       const method = existingId ? 'PUT' : 'POST';
@@ -452,50 +574,44 @@ export const vaultEngine = {
         },
         body: JSON.stringify(diaryData)
       });
-      const data = await safeJsonParse(res);
+      const data = await safeFetchJson(res);
       if (res.ok && data && data.entry) return data.entry;
     } catch (e) {}
 
-    const allDiaries = getLocalData('diary_entries', []);
-    if (existingId) {
-      const idx = allDiaries.findIndex(d => d.id === existingId);
-      if (idx !== -1) {
-        allDiaries[idx] = {
-          ...allDiaries[idx],
-          ...diaryData,
-          updated_at: new Date().toISOString()
-        };
-        setLocalData('diary_entries', allDiaries);
-        return allDiaries[idx];
-      }
-    }
-
-    const newEntry = {
-      id: Date.now(),
+    // 2. Save locally to IndexedDB & LocalStorage
+    const entryId = existingId ? existingId : Date.now();
+    const entryRecord = {
+      id: entryId,
       user_id: userId,
-      title: diaryData.title.trim(),
-      content: diaryData.content,
+      title: diaryData.title ? diaryData.title.trim() : 'Untitled Memory',
+      content: diaryData.content || '',
       mood: diaryData.mood || 'Melancholy',
+      weather: diaryData.weather || 'Rainy Night',
+      image_url: diaryData.image_url || null,
       paper_style: diaryData.paper_style || 'bg-parchment-pattern',
       entry_date: diaryData.entry_date || new Date().toISOString().split('T')[0],
-      created_at: new Date().toISOString(),
+      created_at: diaryData.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
 
-    allDiaries.push(newEntry);
-    setLocalData('diary_entries', allDiaries);
+    // Save to IndexedDB
+    try {
+      await putIDBStoreItem('diary_entries', entryRecord);
+    } catch (e) {}
 
-    // Mirror to IDB
-    openDatabase().then(db => {
-      if (db) {
-        try {
-          const tx = db.transaction(['diary_entries'], 'readwrite');
-          tx.objectStore('diary_entries').put(newEntry);
-        } catch (e) {}
+    // Save to LocalStorage
+    try {
+      const allDiaries = getLocalData('diary_entries', []);
+      const idx = allDiaries.findIndex(d => String(d.id) === String(entryId));
+      if (idx !== -1) {
+        allDiaries[idx] = { ...allDiaries[idx], ...entryRecord };
+      } else {
+        allDiaries.unshift(entryRecord);
       }
-    });
+      setLocalData('diary_entries', allDiaries);
+    } catch (e) {}
 
-    return newEntry;
+    return entryRecord;
   },
 
   async deleteDiary(token, id, userId) {
@@ -506,16 +622,13 @@ export const vaultEngine = {
       });
     } catch (e) {}
 
-    const allDiaries = getLocalData('diary_entries', []).filter(d => d.id !== id);
+    try {
+      await deleteIDBStoreItem('diary_entries', Number(id) || id);
+    } catch (e) {}
+
+    const allDiaries = getLocalData('diary_entries', []).filter(d => String(d.id) !== String(id));
     setLocalData('diary_entries', allDiaries);
 
-    const db = await openDatabase();
-    if (db) {
-      try {
-        const tx = db.transaction(['diary_entries'], 'readwrite');
-        tx.objectStore('diary_entries').delete(id);
-      } catch (e) {}
-    }
     return true;
   }
 };

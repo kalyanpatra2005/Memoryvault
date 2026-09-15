@@ -29,31 +29,39 @@ function generateToken(user) {
 // Automatically ensure the user exists in SQLite DB so foreign keys don't fail
 function ensureUserExists(user) {
   if (!user) return null;
-  const userId = user.id || 1;
   const userName = user.name || 'Vault Member';
-  const userEmail = (user.email || `user_${userId}@vault.local`).trim().toLowerCase();
+  const userEmail = (user.email || `user_${Date.now()}@vault.local`).trim().toLowerCase();
   const userPhone = user.phone || 'N/A';
   const userDob = user.dob || '2000-01-01';
 
   try {
-    const existing = db.prepare('SELECT id, name, email, phone FROM users WHERE id = ?').get(userId);
-    if (existing) {
-      return { ...user, id: existing.id, name: existing.name, email: existing.email };
+    // Check if integer ID already matches a user in SQLite
+    if (typeof user.id === 'number' && Number.isInteger(user.id)) {
+      const existing = db.prepare('SELECT id, name, email, phone FROM users WHERE id = ?').get(user.id);
+      if (existing) {
+        return { ...user, id: existing.id, name: existing.name, email: existing.email };
+      }
     }
 
+    // Check if email already matches in SQLite
     const byEmail = db.prepare('SELECT id, name, email, phone FROM users WHERE email = ?').get(userEmail);
     if (byEmail) {
       return { ...user, id: byEmail.id, name: byEmail.name, email: byEmail.email };
     }
 
-    db.prepare(`
-      INSERT OR IGNORE INTO users (id, name, email, phone, dob, password_hash)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(userId, userName, userEmail, userPhone, userDob, 'vault_permanent_session');
+    // Insert user into SQLite and get auto-generated integer ID
+    const info = db.prepare(`
+      INSERT INTO users (name, email, phone, dob, password_hash)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(userName, userEmail, userPhone, userDob, 'vault_permanent_session');
 
-    return { ...user, id: userId, name: userName, email: userEmail };
+    return { ...user, id: Number(info.lastInsertRowid), name: userName, email: userEmail };
   } catch (e) {
-    return { ...user, id: userId };
+    const fallback = db.prepare('SELECT id, name, email FROM users ORDER BY id ASC LIMIT 1').get();
+    if (fallback) {
+      return { ...user, id: fallback.id, name: fallback.name, email: fallback.email };
+    }
+    return { ...user, id: 1 };
   }
 }
 
