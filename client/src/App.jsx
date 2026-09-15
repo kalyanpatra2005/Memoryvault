@@ -9,6 +9,8 @@ import {
   Sparkles, Calendar, HeartCrack, ChevronRight, CheckCircle2 
 } from 'lucide-react';
 
+import { vaultEngine } from './services/vaultEngine';
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
@@ -36,6 +38,15 @@ export default function App() {
     setUser(userData);
     setToken(userToken);
     setIsAuthOpen(false);
+  };
+
+  const handleGuestAccess = (defaultTab = 'vault') => {
+    const guest = vaultEngine.createGuestSession();
+    localStorage.setItem('vault_token', guest.token);
+    localStorage.setItem('vault_user', JSON.stringify(guest.user));
+    setUser(guest.user);
+    setToken(guest.token);
+    setActiveTab(defaultTab);
   };
 
   const handleLogout = () => {
@@ -113,14 +124,23 @@ export default function App() {
                   <span>Enter or Register Your Vault</span>
                   <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
                 </button>
+
+                <button
+                  onClick={() => handleGuestAccess('vault')}
+                  className="w-full sm:w-auto px-7 py-4 rounded-2xl bg-[#151a26] hover:bg-[#1c2333] text-amber-200 border border-amber-500/40 font-cinzel font-semibold text-sm tracking-wider shadow-lg transition-all flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>Enter Inside Directly (Guest Pass)</span>
+                </button>
               </div>
 
-              {/* Feature Grid */}
+              {/* Feature Grid - Direct Entry Inside into Each Part */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-20 text-left">
                 {/* Feature 1: The Tragic Diary */}
                 <div 
-                  onClick={() => setIsAuthOpen(true)}
+                  onClick={() => handleGuestAccess('diary')}
                   className="p-6 rounded-2xl bg-[#141824] border border-rose-950/80 hover:border-rose-700/60 transition-all shadow-xl group cursor-pointer"
+                  title="Click to enter the Tragic Diary directly"
                 >
                   <div className="w-12 h-12 rounded-xl bg-rose-950/80 border border-rose-800/40 flex items-center justify-center text-rose-300 mb-4 group-hover:scale-110 transition-transform">
                     <Feather className="w-6 h-6" />
@@ -128,39 +148,51 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <h3 className="font-cinzel font-bold text-amber-100 text-lg">Old Tragic Beautiful Diary</h3>
                     <span className="text-[10px] px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800 font-bold uppercase">
-                      Special
+                      Open Inside ➔
                     </span>
                   </div>
                   <p className="text-sm text-slate-400 mt-2 font-serif leading-relaxed">
-                    Write personal memoirs onto aged antique parchment or candlelight noir with atmospheric rain sounds and melancholic mood tags.
+                    Write personal memoirs onto aged antique parchment or candlelight noir with atmospheric rain sounds and melancholic mood tags. Click to enter inside.
                   </p>
                 </div>
 
                 {/* Feature 2: Photo & Video Vault */}
                 <div 
-                  onClick={() => setIsAuthOpen(true)}
+                  onClick={() => handleGuestAccess('vault')}
                   className="p-6 rounded-2xl bg-[#141824] border border-slate-800 hover:border-amber-500/50 transition-all shadow-xl group cursor-pointer"
+                  title="Click to enter the Memory Vault directly"
                 >
                   <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 group-hover:scale-110 transition-transform">
                     <ImageIcon className="w-6 h-6" />
                   </div>
-                  <h3 className="font-cinzel font-bold text-amber-100 text-lg">Photos &amp; Video Capsules</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-cinzel font-bold text-amber-100 text-lg">Photos &amp; Video Capsules</h3>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold uppercase">
+                      Open Inside ➔
+                    </span>
+                  </div>
                   <p className="text-sm text-slate-400 mt-2 font-serif leading-relaxed">
-                    Upload full-resolution photos and video clips with dates and tags. Optionally seal them as future time capsules for anniversaries.
+                    Upload full-resolution photos and video clips with dates and tags. Optionally seal them as future time capsules. Click to enter inside.
                   </p>
                 </div>
 
                 {/* Feature 3: Strict Security & Forever Permanent */}
                 <div 
-                  onClick={() => setIsAuthOpen(true)}
+                  onClick={() => handleGuestAccess('profile')}
                   className="p-6 rounded-2xl bg-[#141824] border border-slate-800 hover:border-emerald-500/50 transition-all shadow-xl group cursor-pointer"
+                  title="Click to view Security & Profile settings directly"
                 >
                   <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-4 group-hover:scale-110 transition-transform">
                     <ShieldCheck className="w-6 h-6" />
                   </div>
-                  <h3 className="font-cinzel font-bold text-amber-100 text-lg">Strict Privacy &amp; Permanent</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-cinzel font-bold text-amber-100 text-lg">Strict Privacy &amp; Permanent</h3>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold uppercase">
+                      Open Inside ➔
+                    </span>
+                  </div>
                   <p className="text-sm text-slate-400 mt-2 font-serif leading-relaxed">
-                    No one else can ever see your photos or notes. Unless you choose to delete them, everything stays permanently preserved.
+                    No one else can ever see your photos or notes. Unless you choose to delete them, everything stays permanently preserved. Click to view security.
                   </p>
                 </div>
               </div>

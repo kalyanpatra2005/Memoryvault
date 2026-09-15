@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { Lock, Mail, Phone, Calendar, User, Eye, EyeOff, ShieldCheck, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Lock, Mail, Phone, Calendar, User, Eye, EyeOff, ShieldCheck, Sparkles, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
 import { vaultEngine } from '../services/vaultEngine';
 
@@ -28,6 +27,13 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   });
 
   if (!isOpen) return null;
+
+  const handleGuestEntry = () => {
+    const guest = vaultEngine.createGuestSession();
+    localStorage.setItem('vault_token', guest.token);
+    localStorage.setItem('vault_user', JSON.stringify(guest.user));
+    onAuthSuccess(guest.user, guest.token);
+  };
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -69,7 +75,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
       setSuccessMsg('Account sealed and created! Entering your private vault...');
       setTimeout(() => {
         onAuthSuccess(data.user, data.token);
-      }, 1000);
+      }, 800);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -80,6 +86,15 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
       <div className="relative w-full max-w-md my-8 bg-[#11151f] border border-amber-500/30 rounded-2xl shadow-2xl shadow-amber-950/60 overflow-hidden">
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-100 transition-colors z-20"
+          title="Close Modal"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
         {/* Top Decorative Banner */}
         <div className="p-6 pb-4 bg-gradient-to-b from-amber-950/40 via-[#161c2b] to-[#11151f] text-center relative border-b border-slate-800/80">
           <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shadow-inner mb-3">
@@ -331,8 +346,20 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
             </form>
           )}
 
+          {/* Instant Guest Access Button */}
+          <div className="mt-4 pt-3 border-t border-slate-800/80">
+            <button
+              type="button"
+              onClick={handleGuestEntry}
+              className="w-full py-2.5 bg-[#171e2c] hover:bg-[#1d2638] text-amber-200 border border-amber-500/30 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-md"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Instant Guest Entry (Enter Inside Parts Immediately)</span>
+            </button>
+          </div>
+
           {/* Privacy & Lifetime Storage Guarantee */}
-          <div className="mt-5 pt-4 border-t border-slate-800/70 text-center">
+          <div className="mt-4 pt-3 border-t border-slate-800/70 text-center">
             <div className="flex items-center justify-center gap-1.5 text-[11px] text-emerald-400 font-medium">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span>Absolute Privacy Isolation • Permanent Retention Guaranteed</span>
