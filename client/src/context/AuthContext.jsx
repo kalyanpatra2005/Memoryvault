@@ -16,9 +16,12 @@ export const AuthProvider = ({ children }) => {
       fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${token}` }
       })
-        .then(res => {
-          if (res.ok) return res.json();
-          throw new Error('Session expired');
+        .then(async res => {
+          const contentType = res.headers.get('content-type') || '';
+          if (res.ok && contentType.includes('application/json')) {
+            return res.json();
+          }
+          throw new Error('Session expired or backend unavailable');
         })
         .then(data => {
           setUser(data.user);
@@ -47,12 +50,25 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('vault_user');
   };
 
-  const authFetch = (url, options = {}) => {
+  const authFetch = async (url, options = {}) => {
     const headers = {
       ...(options.headers || {}),
       Authorization: `Bearer ${token}`
     };
-    return fetch(url, { ...options, headers });
+    const res = await fetch(url, { ...options, headers });
+    
+    // Attach a safe json parser to the response object to prevent "Unexpected token '<' or 'T'"
+    const originalJson = res.json.bind(res);
+    res.json = async () => {
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const text = await res.text();
+        throw new Error(text && text.length < 200 ? text : `Backend server responded with ${res.status} (${res.statusText || 'Non-JSON response'}). Make sure backend server is running.`);
+      }
+      return originalJson();
+    };
+
+    return res;
   };
 
   return (

@@ -42,7 +42,15 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
         })
       });
 
-      const data = await res.json();
+      const contentType = res.headers.get('content-type') || '';
+      let data = {};
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text && text.length < 150 ? text : 'Backend server returned non-JSON response. Please ensure backend is running.');
+      }
+
       if (!res.ok) {
         throw new Error(data.error || 'Failed to login.');
       }
@@ -87,7 +95,15 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
         })
       });
 
-      const data = await res.json();
+      const contentType = res.headers.get('content-type') || '';
+      let data = {};
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text && text.length < 150 ? text : 'Backend server returned non-JSON response. Please ensure backend is running.');
+      }
+
       if (!res.ok) {
         throw new Error(data.error || 'Registration failed.');
       }
