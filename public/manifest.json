@@ -1,0 +1,24 @@
+{
+  "name": "Memory Vault & Time Capsule",
+  "short_name": "MemoryVault",
+  "description": "Permanent Photo & Video Vault, Atmospheric Tragic Diary, Time Capsules & Public Echoes",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0911",
+  "theme_color": "#0a0911",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
