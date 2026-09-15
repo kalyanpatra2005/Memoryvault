@@ -69,6 +69,20 @@ async function hashPassword(str) {
   }
 }
 
+// Safe JSON parser to avoid "Unexpected token 'T' / '<' ... is not valid JSON"
+const safeJsonParse = async (res) => {
+  if (!res) return null;
+  try {
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return null;
+    }
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+};
+
 export const vaultEngine = {
   // ================= AUTHENTICATION =================
   async register(form) {
@@ -79,11 +93,18 @@ export const vaultEngine = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.token && data.user) return data;
+      const data = await safeJsonParse(res);
+      if (res.ok && data && data.token && data.user) {
+        return data;
       }
-    } catch (e) {}
+      if (!res.ok && data && data.error) {
+        throw new Error(data.error);
+      }
+    } catch (e) {
+      if (e.message && (e.message.includes('already exists') || e.message.includes('required') || e.message.includes('match') || e.message.includes('at least'))) {
+        throw e;
+      }
+    }
 
     // 2. Hash password BEFORE any storage transaction
     const passwordHash = await hashPassword(form.password);
@@ -141,11 +162,26 @@ export const vaultEngine = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.token && data.user) return data;
+      const data = await safeJsonParse(res);
+      if (res.ok && data && data.token && data.user) {
+        return data;
       }
-    } catch (e) {}
+      if (!res.ok && data && data.error) {
+        // Only throw if no local account with matching email/phone exists
+        const localUsers = getLocalData('users', []);
+        const idLower = (form.identifier || '').trim().toLowerCase();
+        const localUser = localUsers.find(
+          u => u.email.toLowerCase() === idLower || u.phone.toLowerCase() === idLower
+        );
+        if (!localUser) {
+          throw new Error(data.error);
+        }
+      }
+    } catch (e) {
+      if (e.message && (e.message.includes('password') || e.message.includes('Incorrect') || e.message.includes('No account found') || e.message.includes('match the account'))) {
+        throw e;
+      }
+    }
 
     // 2. Hash password BEFORE checking
     const inputHash = await hashPassword(form.password);
@@ -226,10 +262,8 @@ export const vaultEngine = {
       const res = await fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user) return data;
-      }
+      const data = await safeJsonParse(res);
+      if (res.ok && data && data.user) return data;
     } catch (e) {}
 
     const items = getLocalData('vault_items', []).filter(i => i.user_id === userId);
@@ -253,10 +287,8 @@ export const vaultEngine = {
       const res = await fetch(`/api/vault/items?search=${encodeURIComponent(search)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.items) return data.items;
-      }
+      const data = await safeJsonParse(res);
+      if (res.ok && data && data.items) return data.items;
     } catch (e) {}
 
     let items = getLocalData('vault_items', []).filter(i => i.user_id === userId);
@@ -298,10 +330,8 @@ export const vaultEngine = {
         headers: { Authorization: `Bearer ${token}` },
         body: formData
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.item) return data.item;
-      }
+      const data = await safeJsonParse(res);
+      if (res.ok && data && data.item) return data.item;
     } catch (e) {}
 
     return new Promise((resolve, reject) => {
@@ -373,10 +403,8 @@ export const vaultEngine = {
       const res = await fetch(`/api/diary?search=${encodeURIComponent(search)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.entries) return data.entries;
-      }
+      const data = await safeJsonParse(res);
+      if (res.ok && data && data.entries) return data.entries;
     } catch (e) {}
 
     let list = getLocalData('diary_entries', []).filter(d => d.user_id === userId);
@@ -405,10 +433,8 @@ export const vaultEngine = {
         },
         body: JSON.stringify(diaryData)
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.entry) return data.entry;
-      }
+      const data = await safeJsonParse(res);
+      if (res.ok && data && data.entry) return data.entry;
     } catch (e) {}
 
     const allDiaries = getLocalData('diary_entries', []);

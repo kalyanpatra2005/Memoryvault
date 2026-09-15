@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, Lock, Mail, Phone, Calendar, User, ShieldCheck, Eye, EyeOff, KeyRound } from 'lucide-react';
+import { vaultEngine } from '../services/vaultEngine';
+import { X, Lock, Mail, Phone, Calendar, User, ShieldCheck, Eye, EyeOff, KeyRound, Sparkles } from 'lucide-react';
 
 export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
   const { login } = useAuth();
@@ -32,34 +33,17 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          identifier: loginIdentifier,
-          name: loginName,
-          password: loginPassword
-        })
+      const data = await vaultEngine.login({
+        identifier: loginIdentifier,
+        name: loginName,
+        password: loginPassword
       });
-
-      const contentType = res.headers.get('content-type') || '';
-      let data = {};
-      if (contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        throw new Error(text && text.length < 150 ? text : 'Backend server returned non-JSON response. Please ensure backend is running.');
-      }
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to login.');
-      }
 
       login(data.token, data.user);
       if (onSuccess) onSuccess();
       onClose();
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to unlock vault.');
     } finally {
       setLoading(false);
     }
@@ -82,43 +66,33 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: regName,
-          email: regEmail,
-          phone: regPhone,
-          dob: regDob,
-          password: regPassword,
-          confirmPassword: regConfirmPassword
-        })
+      const data = await vaultEngine.register({
+        name: regName,
+        email: regEmail,
+        phone: regPhone,
+        dob: regDob,
+        password: regPassword,
+        confirmPassword: regConfirmPassword
       });
-
-      const contentType = res.headers.get('content-type') || '';
-      let data = {};
-      if (contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        throw new Error(text && text.length < 150 ? text : 'Backend server returned non-JSON response. Please ensure backend is running.');
-      }
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Registration failed.');
-      }
 
       setSuccessMsg('Vault created! Signing you in...');
       setTimeout(() => {
         login(data.token, data.user);
         if (onSuccess) onSuccess();
         onClose();
-      }, 800);
+      }, 700);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Registration failed.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGuestEntry = () => {
+    const session = vaultEngine.createGuestSession();
+    login(session.token, session.user);
+    if (onSuccess) onSuccess();
+    onClose();
   };
 
   return (
@@ -422,6 +396,18 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
               </button>
             </p>
           )}
+        </div>
+
+        {/* Instant Guest Access */}
+        <div className="mt-4 pt-3 border-t border-stone-800/80 text-center">
+          <button
+            type="button"
+            onClick={handleGuestEntry}
+            className="inline-flex items-center space-x-1.5 text-xs text-stone-400 hover:text-amber-300 transition py-1.5 px-3 rounded-lg hover:bg-stone-800/60"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Instant Guest Access (No sign up needed)</span>
+          </button>
         </div>
       </div>
     </div>

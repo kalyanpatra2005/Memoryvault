@@ -12,6 +12,12 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     if (token) {
+      // Offline/Local tokens do not require server validation
+      if (token.startsWith('vault_session_') || token.startsWith('vault_guest_token_')) {
+        setLoading(false);
+        return;
+      }
+
       // Validate token with server
       fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${token}` }
@@ -24,11 +30,17 @@ export const AuthProvider = ({ children }) => {
           throw new Error('Session expired or backend unavailable');
         })
         .then(data => {
-          setUser(data.user);
-          localStorage.setItem('vault_user', JSON.stringify(data.user));
+          if (data && data.user) {
+            setUser(data.user);
+            localStorage.setItem('vault_user', JSON.stringify(data.user));
+          }
         })
         .catch(() => {
-          logout();
+          // If server is temporarily unreachable, preserve existing session if user data exists
+          const saved = localStorage.getItem('vault_user');
+          if (!saved) {
+            logout();
+          }
         })
         .finally(() => setLoading(false));
     } else {
