@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
-const { requireAuth } = require('../auth');
+const { requireAuth, decodeAnyToken } = require('../auth');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'vault_secret_key_super_secure_2026_unbreakable';
 
@@ -64,13 +64,13 @@ function authenticateMedia(req, res, next) {
     return res.status(401).send('Unauthorized: Media access requires authentication.');
   }
 
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
+  const user = decodeAnyToken(token);
+  if (!user) {
     return res.status(401).send('Unauthorized: Invalid or expired token.');
   }
+
+  req.user = user;
+  next();
 }
 
 // Get user's uploaded media files (photos and videos)

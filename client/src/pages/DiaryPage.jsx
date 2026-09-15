@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { vaultEngine } from '../services/vaultEngine';
 import { 
   BookOpen, Feather, Volume2, VolumeX, Flame, Heart, CloudRain, 
   Calendar, Trash2, Eye, Plus, Sparkles, Image as ImageIcon, Search, Lock,
@@ -21,7 +22,7 @@ const WEATHERS = [
 ];
 
 export default function DiaryPage() {
-  const { token, authFetch } = useAuth();
+  const { token, user, authFetch } = useAuth();
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -71,11 +72,32 @@ export default function DiaryPage() {
 
   const fetchEntries = async () => {
     try {
-      const res = await authFetch('/api/diary');
-      if (res.ok) {
-        const data = await res.json();
-        setEntries(data.entries || []);
-      }
+      let serverEntries = [];
+      try {
+        const res = await authFetch('/api/diary');
+        if (res.ok) {
+          const data = await res.json();
+          serverEntries = data.entries || [];
+        }
+      } catch (e) {}
+
+      let localEntries = [];
+      try {
+        localEntries = await vaultEngine.getDiaries(token, user?.id || 'guest');
+      } catch (e) {}
+
+      // Combine server & local entries safely
+      const map = new Map();
+      serverEntries.forEach(item => map.set(String(item.id), item));
+      localEntries.forEach(item => {
+        if (!map.has(String(item.id))) {
+          map.set(String(item.id), item);
+        }
+      });
+
+      const list = Array.from(map.values());
+      list.sort((a, b) => new Date(b.created_at || b.entry_date) - new Date(a.created_at || a.entry_date));
+      setEntries(list);
     } catch (err) {
       console.error('Failed to load diary', err);
     } finally {
@@ -83,9 +105,12 @@ export default function DiaryPage() {
     }
   };
 
-  // Helper to append token if needed for private streaming
+  // Helper to append token if needed for private streaming or pass data URL
   const formatImageUrl = (url) => {
     if (!url) return '';
+    if (url.startsWith('data:') || url.startsWith('blob:')) {
+      return url;
+    }
     if (url.startsWith('/api/media/stream/') && !url.includes('token=')) {
       return `${url}?token=${token}`;
     }
@@ -98,12 +123,15 @@ export default function DiaryPage() {
     if (!file) return;
 
     setPhotoUploading(true);
-    const formData = new FormData();
-    formData.append('files', file);
-    formData.append('caption', title.trim() || 'Diary Keepsake Photo');
-    formData.append('source', 'vault');
+    let photoUrl = '';
 
+    // 1. Try server upload first
     try {
+      const formData = new FormData();
+      formData.append('files', file);
+      formData.append('caption', title.trim() || 'Diary Keepsake Photo');
+      formData.append('source', 'vault');
+
       const res = await fetch('/api/media/upload', {
         method: 'POST',
         headers: {
@@ -112,21 +140,43 @@ export default function DiaryPage() {
         body: formData
       });
 
-      const data = await res.json();
-      if (res.ok && data.media && data.media.length > 0) {
-        const item = data.media[0];
-        const streamUrl = `/api/media/stream/${item.id}?token=${token}`;
-        setImageUrl(streamUrl);
-      } else {
-        alert(data.error || 'Failed to upload photo.');
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.media && data.media.length > 0) {
+          const item = data.media[0];
+          photoUrl = `/api/media/stream/${item.id}?token=${token}`;
+        }
       }
     } catch (err) {
-      console.error('Photo upload error:', err);
-      alert('Photo upload failed: ' + err.message);
-    } finally {
-      setPhotoUploading(false);
-      if (photoFileInputRef.current) photoFileInputRef.current.value = '';
+      console.warn('Server photo upload error, using local vault fallback:', err);
     }
+
+    // 2. Fallback to client-side vaultEngine (IndexedDB / DataURL)
+    if (!photoUrl) {
+      try {
+        const localItem = await vaultEngine.uploadVaultItem(
+          token,
+          user?.id || 'guest',
+          file,
+          title.trim() || 'Diary Keepsake Photo',
+          new Date().toISOString().split('T')[0],
+          'diary'
+        );
+        photoUrl = localItem.media_url || localItem.data_url;
+      } catch (e) {
+        console.error('Local vault fallback failed:', e);
+      }
+    }
+
+    if (photoUrl) {
+      setImageUrl(photoUrl);
+    } else {
+      alert('Could not attach photo. Please ensure it is a valid image file.');
+    }
+
+    setPhotoUploading(false);
+    if (photoFileInputRef.current) photoFileInputRef.current.value = '';
   };
 
   // Direct photo file upload handler for edit modal
@@ -135,12 +185,15 @@ export default function DiaryPage() {
     if (!file) return;
 
     setEditPhotoUploading(true);
-    const formData = new FormData();
-    formData.append('files', file);
-    formData.append('caption', editTitle.trim() || 'Updated Diary Keepsake');
-    formData.append('source', 'vault');
+    let photoUrl = '';
 
+    // 1. Try server upload first
     try {
+      const formData = new FormData();
+      formData.append('files', file);
+      formData.append('caption', editTitle.trim() || 'Updated Diary Keepsake');
+      formData.append('source', 'vault');
+
       const res = await fetch('/api/media/upload', {
         method: 'POST',
         headers: {
@@ -149,21 +202,43 @@ export default function DiaryPage() {
         body: formData
       });
 
-      const data = await res.json();
-      if (res.ok && data.media && data.media.length > 0) {
-        const item = data.media[0];
-        const streamUrl = `/api/media/stream/${item.id}?token=${token}`;
-        setEditImageUrl(streamUrl);
-      } else {
-        alert(data.error || 'Failed to upload photo.');
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.media && data.media.length > 0) {
+          const item = data.media[0];
+          photoUrl = `/api/media/stream/${item.id}?token=${token}`;
+        }
       }
     } catch (err) {
-      console.error('Photo upload error:', err);
-      alert('Photo upload failed: ' + err.message);
-    } finally {
-      setEditPhotoUploading(false);
-      if (editPhotoFileInputRef.current) editPhotoFileInputRef.current.value = '';
+      console.warn('Server edit photo upload failed, using local vault fallback:', err);
     }
+
+    // 2. Fallback to local vaultEngine
+    if (!photoUrl) {
+      try {
+        const localItem = await vaultEngine.uploadVaultItem(
+          token,
+          user?.id || 'guest',
+          file,
+          editTitle.trim() || 'Updated Diary Keepsake',
+          new Date().toISOString().split('T')[0],
+          'diary'
+        );
+        photoUrl = localItem.media_url || localItem.data_url;
+      } catch (e) {
+        console.error('Local vault fallback failed:', e);
+      }
+    }
+
+    if (photoUrl) {
+      setEditImageUrl(photoUrl);
+    } else {
+      alert('Could not attach photo. Please ensure it is a valid image file.');
+    }
+
+    setEditPhotoUploading(false);
+    if (editPhotoFileInputRef.current) editPhotoFileInputRef.current.value = '';
   };
 
   // Launch Editing Mode for a saved page
@@ -183,6 +258,8 @@ export default function DiaryPage() {
     if (!editContent.trim()) return;
 
     setEditSaving(true);
+    let updatedEntry = null;
+
     try {
       const res = await authFetch(`/api/diary/${editingEntry.id}`, {
         method: 'PUT',
@@ -196,24 +273,43 @@ export default function DiaryPage() {
         })
       });
 
-      const data = await res.json();
       if (res.ok) {
-        setEntries(entries.map(item => item.id === editingEntry.id ? data.entry : item));
-        if (activeReadingEntry?.id === editingEntry.id) {
-          setActiveReadingEntry(data.entry);
+        const data = await res.json();
+        if (data && data.entry) {
+          updatedEntry = data.entry;
         }
-        setEditingEntry(null);
-        setSuccessMsg('Page updated and resealed into eternity.');
-        setTimeout(() => setSuccessMsg(''), 4000);
-      } else {
-        alert(data.error || 'Failed to update entry.');
       }
     } catch (err) {
-      console.error('Update error:', err);
-      alert('Failed to update entry: ' + err.message);
-    } finally {
-      setEditSaving(false);
+      console.warn('Server diary update failed, updating local vaultEngine:', err);
     }
+
+    if (!updatedEntry) {
+      try {
+        updatedEntry = await vaultEngine.saveDiary(token, user?.id || 'guest', {
+          title: editTitle.trim() || 'Untitled Memory',
+          content: editContent,
+          mood: editMood,
+          weather: editWeather,
+          image_url: editImageUrl.trim() || null
+        }, editingEntry.id);
+      } catch (e) {
+        console.error('Local vaultEngine update failed:', e);
+      }
+    }
+
+    if (updatedEntry) {
+      setEntries(entries.map(item => item.id === editingEntry.id ? updatedEntry : item));
+      if (activeReadingEntry?.id === editingEntry.id) {
+        setActiveReadingEntry(updatedEntry);
+      }
+      setEditingEntry(null);
+      setSuccessMsg('Page updated and resealed into eternity.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } else {
+      alert('Could not update diary page.');
+    }
+
+    setEditSaving(false);
   };
 
   // Web Audio ambient rain synthesizer
@@ -292,6 +388,9 @@ export default function DiaryPage() {
     if (!content.trim()) return;
 
     setSaving(true);
+    let savedEntry = null;
+
+    // 1. Try server save first
     try {
       const res = await authFetch('/api/diary', {
         method: 'POST',
@@ -307,18 +406,41 @@ export default function DiaryPage() {
 
       if (res.ok) {
         const data = await res.json();
-        setEntries([data.entry, ...entries]);
-        setTitle('');
-        setContent('');
-        setImageUrl('');
-        setSuccessMsg('Your memory has been sealed into eternity.');
-        setTimeout(() => setSuccessMsg(''), 4000);
+        if (data && data.entry) {
+          savedEntry = data.entry;
+        }
       }
     } catch (err) {
-      console.error('Failed to save entry', err);
-    } finally {
-      setSaving(false);
+      console.warn('Server diary save failed, falling back to permanent local vault:', err);
     }
+
+    // 2. Fallback to vaultEngine (IndexedDB / LocalStorage)
+    if (!savedEntry) {
+      try {
+        savedEntry = await vaultEngine.saveDiary(token, user?.id || 'guest', {
+          title: title.trim() || 'Untitled Memory',
+          content,
+          mood,
+          weather,
+          image_url: imageUrl.trim() || null
+        });
+      } catch (e) {
+        console.error('Local vaultEngine save failed:', e);
+      }
+    }
+
+    if (savedEntry) {
+      setEntries([savedEntry, ...entries.filter(it => it.id !== savedEntry.id)]);
+      setTitle('');
+      setContent('');
+      setImageUrl('');
+      setSuccessMsg('Your memory has been sealed into eternity.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } else {
+      alert('Could not save diary page. Please check your inputs.');
+    }
+
+    setSaving(false);
   };
 
   const handleDeleteEntry = async (id, e) => {
@@ -328,18 +450,19 @@ export default function DiaryPage() {
     }
 
     try {
-      const res = await authFetch(`/api/diary/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setEntries(entries.filter(entry => entry.id !== id));
-        if (activeReadingEntry?.id === id) {
-          setActiveReadingEntry(null);
-        }
-        if (editingEntry?.id === id) {
-          setEditingEntry(null);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to delete', err);
+      await authFetch(`/api/diary/${id}`, { method: 'DELETE' });
+    } catch (err) {}
+
+    try {
+      await vaultEngine.deleteDiary(token, id, user?.id || 'guest');
+    } catch (err) {}
+
+    setEntries(entries.filter(entry => entry.id !== id));
+    if (activeReadingEntry?.id === id) {
+      setActiveReadingEntry(null);
+    }
+    if (editingEntry?.id === id) {
+      setEditingEntry(null);
     }
   };
 

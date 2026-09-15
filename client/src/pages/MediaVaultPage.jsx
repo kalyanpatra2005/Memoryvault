@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { vaultEngine } from '../services/vaultEngine';
 import { 
   Film, Image as ImageIcon, UploadCloud, Trash2, Eye, ShieldCheck, 
   Lock, Play, Calendar, HardDrive, Download, AlertTriangle, CheckCircle 
 } from 'lucide-react';
 
 export default function MediaVaultPage() {
-  const { token, authFetch } = useAuth();
+  const { token, user, authFetch } = useAuth();
   const [mediaList, setMediaList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState('all'); // 'all', 'photo', 'video'
@@ -26,12 +27,47 @@ export default function MediaVaultPage() {
 
   const fetchMedia = async () => {
     try {
-      const url = filterType === 'all' ? '/api/media' : `/api/media?type=${filterType}`;
-      const res = await authFetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        setMediaList(data.media || []);
-      }
+      let serverMedia = [];
+      try {
+        const url = filterType === 'all' ? '/api/media' : `/api/media?type=${filterType}`;
+        const res = await authFetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          serverMedia = data.media || [];
+        }
+      } catch (e) {}
+
+      let localMedia = [];
+      try {
+        localMedia = await vaultEngine.getVaultItems(token, user?.id || 'guest');
+      } catch (e) {}
+
+      // Combine server & local items
+      const map = new Map();
+      serverMedia.forEach(item => {
+        map.set(String(item.id), {
+          ...item,
+          media_type: item.media_type || (item.mime_type?.startsWith('video/') ? 'video' : 'photo'),
+          media_url: `/api/media/stream/${item.id}?token=${token}`
+        });
+      });
+
+      localMedia.forEach(item => {
+        const itemType = item.media_type || item.type || 'photo';
+        if (!map.has(String(item.id))) {
+          if (filterType === 'all' || itemType === filterType) {
+            map.set(String(item.id), {
+              ...item,
+              media_type: itemType,
+              media_url: item.data_url || item.media_url || item.file_url
+            });
+          }
+        }
+      });
+
+      const list = Array.from(map.values());
+      list.sort((a, b) => new Date(b.created_at || b.memory_date) - new Date(a.created_at || a.memory_date));
+      setMediaList(list);
     } catch (err) {
       console.error('Failed to load media', err);
     } finally {
@@ -47,35 +83,62 @@ export default function MediaVaultPage() {
     setUploadError('');
     setUploadSuccess('');
 
-    const formData = new FormData();
-    for (let i = 0; i < files.length; i++) {
-      formData.append('files', files[i]);
-    }
-    if (uploadCaption.trim()) {
-      formData.append('caption', uploadCaption.trim());
-    }
-
+    let uploadedCount = 0;
     try {
-      const res = await fetch('/api/media/upload', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`
-        },
-        body: formData
-      });
+      // 1. Try server upload first
+      let serverSuccess = false;
+      try {
+        const formData = new FormData();
+        for (let i = 0; i < files.length; i++) {
+          formData.append('files', files[i]);
+        }
+        if (uploadCaption.trim()) {
+          formData.append('caption', uploadCaption.trim());
+        }
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Upload failed');
+        const res = await fetch('/api/media/upload', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: formData
+        });
+
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data && data.media && data.media.length > 0) {
+            serverSuccess = true;
+            uploadedCount = data.media.length;
+          }
+        }
+      } catch (serverErr) {
+        console.warn('Server upload unavailable, falling back to local vault:', serverErr);
       }
 
-      setUploadSuccess(`${data.media.length} item(s) permanently vaulted.`);
+      // 2. Fallback to permanent local vaultEngine (IndexedDB / LocalStorage)
+      if (!serverSuccess) {
+        for (let i = 0; i < files.length; i++) {
+          await vaultEngine.uploadVaultItem(
+            token,
+            user?.id || 'guest',
+            files[i],
+            uploadCaption.trim() || files[i].name,
+            new Date().toISOString().split('T')[0],
+            ''
+          );
+          uploadedCount++;
+        }
+      }
+
+      setUploadSuccess(`${uploadedCount} memory item(s) permanently vaulted.`);
       setUploadCaption('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       fetchMedia();
       setTimeout(() => setUploadSuccess(''), 4000);
     } catch (err) {
-      setUploadError(err.message);
+      console.error('Upload error:', err);
+      setUploadError(err.message || 'Failed to upload media.');
     } finally {
       setUploading(false);
     }
@@ -88,29 +151,41 @@ export default function MediaVaultPage() {
     }
 
     try {
-      const res = await authFetch(`/api/media/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setMediaList(mediaList.filter(item => item.id !== id));
-        if (selectedMedia?.id === id) {
-          setSelectedMedia(null);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to delete media', err);
+      await authFetch(`/api/media/${id}`, { method: 'DELETE' });
+    } catch (err) {}
+
+    try {
+      await vaultEngine.deleteVaultItem(token, id, user?.id || 'guest');
+    } catch (err) {}
+
+    setMediaList(mediaList.filter(item => item.id !== id));
+    if (selectedMedia?.id === id) {
+      setSelectedMedia(null);
     }
   };
 
   const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 B';
+    if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
-  // Build authenticated streaming URL
-  const getMediaUrl = (id) => {
-    return `/api/media/stream/${id}?token=${token}`;
+  // Build safe URL for streaming or local data URL
+  const getMediaUrl = (itemOrId) => {
+    if (!itemOrId) return '';
+    if (typeof itemOrId === 'object') {
+      if (itemOrId.data_url) return itemOrId.data_url;
+      if (itemOrId.media_url) return itemOrId.media_url;
+      return `/api/media/stream/${itemOrId.id}?token=${token}`;
+    }
+    const found = mediaList.find(m => String(m.id) === String(itemOrId));
+    if (found) {
+      if (found.data_url) return found.data_url;
+      if (found.media_url) return found.media_url;
+    }
+    return `/api/media/stream/${itemOrId}?token=${token}`;
   };
 
   return (
@@ -250,7 +325,7 @@ export default function MediaVaultPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {mediaList.map((item) => {
             const isVideo = item.media_type === 'video';
-            const mediaUrl = getMediaUrl(item.id);
+            const mediaUrl = getMediaUrl(item);
 
             return (
               <div
@@ -314,8 +389,8 @@ export default function MediaVaultPage() {
                     {item.caption || item.original_name}
                   </p>
                   <div className="mt-1 flex items-center justify-between text-[11px] text-stone-400">
-                    <span>{new Date(item.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
-                    <span>{formatFileSize(item.size_bytes)}</span>
+                    <span>{new Date(item.created_at || item.memory_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
+                    <span>{formatFileSize(item.size_bytes || item.file_size)}</span>
                   </div>
                 </div>
               </div>
@@ -354,11 +429,11 @@ export default function MediaVaultPage() {
                   controls
                   autoPlay
                   className="max-h-[65vh] w-auto max-w-full rounded"
-                  src={getMediaUrl(selectedMedia.id)}
+                  src={getMediaUrl(selectedMedia)}
                 />
               ) : (
                 <img
-                  src={getMediaUrl(selectedMedia.id)}
+                  src={getMediaUrl(selectedMedia)}
                   alt={selectedMedia.caption || selectedMedia.original_name}
                   className="max-h-[65vh] w-auto max-w-full object-contain rounded"
                 />
@@ -368,16 +443,16 @@ export default function MediaVaultPage() {
             {/* Modal Footer Controls */}
             <div className="p-4 bg-stone-950 border-t border-stone-800 flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="text-stone-400">
-                <p>Saved on: {new Date(selectedMedia.created_at).toLocaleString()}</p>
+                <p>Saved on: {new Date(selectedMedia.created_at || selectedMedia.memory_date).toLocaleString()}</p>
                 <p className="text-[11px] text-stone-500">
-                  Size: {formatFileSize(selectedMedia.size_bytes)} • Format: {selectedMedia.mime_type}
+                  Size: {formatFileSize(selectedMedia.size_bytes || selectedMedia.file_size)} • Format: {selectedMedia.mime_type}
                 </p>
               </div>
 
               <div className="flex items-center space-x-3">
                 <a
-                  href={getMediaUrl(selectedMedia.id)}
-                  download={selectedMedia.original_name}
+                  href={getMediaUrl(selectedMedia)}
+                  download={selectedMedia.original_name || 'memory_vault_download'}
                   className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 flex items-center space-x-1.5 transition"
                 >
                   <Download className="w-3.5 h-3.5" />

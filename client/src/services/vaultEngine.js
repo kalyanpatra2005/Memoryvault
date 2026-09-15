@@ -284,11 +284,18 @@ export const vaultEngine = {
   // ================= VAULT ITEMS (PHOTOS & VIDEOS) =================
   async getVaultItems(token, userId, search = '') {
     try {
-      const res = await fetch(`/api/vault/items?search=${encodeURIComponent(search)}`, {
+      const res = await fetch(`/api/media${search ? `?search=${encodeURIComponent(search)}` : ''}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await safeJsonParse(res);
-      if (res.ok && data && data.items) return data.items;
+      if (res.ok && data && (data.media || data.items)) {
+        const list = (data.media || data.items).map(item => ({
+          ...item,
+          type: item.media_type || item.type,
+          media_url: item.media_url || `/api/media/stream/${item.id}?token=${token}`
+        }));
+        return list;
+      }
     } catch (e) {}
 
     let items = getLocalData('vault_items', []).filter(i => i.user_id === userId);
@@ -308,30 +315,40 @@ export const vaultEngine = {
       return {
         ...item,
         is_locked: !!isLocked,
-        media_url: item.data_url || item.file_url || `/api/vault/media/${item.id}`
+        media_url: item.data_url || item.file_url || `/api/media/stream/${item.id}?token=${token}`
       };
     });
 
-    processed.sort((a, b) => new Date(b.memory_date) - new Date(a.memory_date));
+    processed.sort((a, b) => new Date(b.memory_date || b.created_at) - new Date(a.memory_date || a.created_at));
     return processed;
   },
 
   async uploadVaultItem(token, userId, file, caption, memoryDate, tags, unlockDate) {
     try {
       const formData = new FormData();
-      formData.append('mediaFile', file);
-      formData.append('caption', caption);
-      formData.append('memoryDate', memoryDate);
-      formData.append('tags', tags);
-      if (unlockDate) formData.append('unlockDate', unlockDate);
+      formData.append('files', file);
+      formData.append('caption', caption || '');
+      formData.append('memoryDate', memoryDate || '');
+      formData.append('tags', tags || '');
+      formData.append('source', 'vault');
 
-      const res = await fetch('/api/vault/upload', {
+      const res = await fetch('/api/media/upload', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData
       });
       const data = await safeJsonParse(res);
-      if (res.ok && data && data.item) return data.item;
+      if (res.ok && data) {
+        if (data.media && data.media.length > 0) {
+          const item = data.media[0];
+          return {
+            ...item,
+            type: item.media_type,
+            media_url: `/api/media/stream/${item.id}?token=${token}`
+          };
+        }
+        if (data.item) return data.item;
+      }
     } catch (e) {}
 
     return new Promise((resolve, reject) => {
@@ -343,8 +360,10 @@ export const vaultEngine = {
           id: Date.now(),
           user_id: userId,
           type: isVideo ? 'video' : 'photo',
+          media_type: isVideo ? 'video' : 'photo',
           original_name: file.name,
           file_size: file.size,
+          size_bytes: file.size,
           mime_type: file.type,
           data_url: dataUrl,
           caption: caption || '',
@@ -378,7 +397,7 @@ export const vaultEngine = {
 
   async deleteVaultItem(token, id, userId) {
     try {
-      await fetch(`/api/vault/items/${id}`, {
+      await fetch(`/api/media/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
