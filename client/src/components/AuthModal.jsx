@@ -1,50 +1,55 @@
-import { Lock, Mail, Phone, Calendar, User, Eye, EyeOff, ShieldCheck, Sparkles, CheckCircle2, AlertCircle, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { X, Lock, Mail, Phone, Calendar, User, ShieldCheck, Eye, EyeOff, KeyRound } from 'lucide-react';
 
-import { vaultEngine } from '../services/vaultEngine';
+export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
+  const { login } = useAuth();
+  const [mode, setMode] = useState(initialMode); // 'login' or 'register'
 
-export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
-  const [isLogin, setIsLogin] = useState(true);
+  // Login form state (email/phone no, name, password)
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [loginName, setLoginName] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+
+  // Register form state (name, email, phone, dob, password, confirm password)
+  const [regName, setRegName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regDob, setRegDob] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regConfirmPassword, setRegConfirmPassword] = useState('');
+
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Login form state (email/phone, name, password)
-  const [loginForm, setLoginForm] = useState({
-    identifier: '',
-    name: '',
-    password: ''
-  });
-
-  // Register form state (name, email, phone, dob, password, confirmPassword)
-  const [regForm, setRegForm] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    dob: '',
-    password: '',
-    confirmPassword: ''
-  });
-
   if (!isOpen) return null;
 
-  const handleGuestEntry = () => {
-    const guest = vaultEngine.createGuestSession();
-    localStorage.setItem('vault_token', guest.token);
-    localStorage.setItem('vault_user', JSON.stringify(guest.user));
-    onAuthSuccess(guest.user, guest.token);
-  };
-
-  const handleLoginSubmit = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      const data = await vaultEngine.login(loginForm);
-      localStorage.setItem('vault_token', data.token);
-      localStorage.setItem('vault_user', JSON.stringify(data.user));
-      onAuthSuccess(data.user, data.token);
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: loginIdentifier,
+          name: loginName,
+          password: loginPassword
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to login.');
+      }
+
+      login(data.token, data.user);
+      if (onSuccess) onSuccess();
+      onClose();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -52,29 +57,46 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
     }
   };
 
-  const handleRegisterSubmit = async (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (regForm.password !== regForm.confirmPassword) {
-      setError('Passwords do not match. Please verify your confirm password.');
+    if (regPassword !== regConfirmPassword) {
+      setError('Password and Confirm Password do not match.');
       return;
     }
 
-    if (regForm.password.length < 6) {
-      setError('Password must be at least 6 characters for vault security.');
+    if (regPassword.length < 6) {
+      setError('Password should be at least 6 characters.');
       return;
     }
 
     setLoading(true);
 
     try {
-      const data = await vaultEngine.register(regForm);
-      localStorage.setItem('vault_token', data.token);
-      localStorage.setItem('vault_user', JSON.stringify(data.user));
-      setSuccessMsg('Account sealed and created! Entering your private vault...');
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: regName,
+          email: regEmail,
+          phone: regPhone,
+          dob: regDob,
+          password: regPassword,
+          confirmPassword: regConfirmPassword
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Registration failed.');
+      }
+
+      setSuccessMsg('Vault created! Signing you in...');
       setTimeout(() => {
-        onAuthSuccess(data.user, data.token);
+        login(data.token, data.user);
+        if (onSuccess) onSuccess();
+        onClose();
       }, 800);
     } catch (err) {
       setError(err.message);
@@ -85,289 +107,305 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-md my-8 bg-[#11151f] border border-amber-500/30 rounded-2xl shadow-2xl shadow-amber-950/60 overflow-hidden">
+      <div 
+        className="relative w-full max-w-md bg-stone-900 border border-amber-800/40 rounded-2xl shadow-2xl p-6 sm:p-8 text-stone-100 my-8"
+        style={{
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9), 0 0 30px rgba(180, 83, 9, 0.15)'
+        }}
+      >
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-100 transition-colors z-20"
-          title="Close Modal"
+          className="absolute top-4 right-4 text-stone-400 hover:text-stone-100 p-1.5 rounded-lg hover:bg-stone-800 transition"
         >
           <X className="w-5 h-5" />
         </button>
 
-        {/* Top Decorative Banner */}
-        <div className="p-6 pb-4 bg-gradient-to-b from-amber-950/40 via-[#161c2b] to-[#11151f] text-center relative border-b border-slate-800/80">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shadow-inner mb-3">
-            <Lock className="w-7 h-7 text-amber-400" />
+        {/* Header with Vault Emblem */}
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-amber-600 to-amber-950 border border-amber-500/40 mb-3 shadow-lg shadow-amber-950">
+            <KeyRound className="w-6 h-6 text-amber-200" />
           </div>
-          <h2 className="text-2xl font-cinzel font-bold text-amber-100 tracking-wider">
-            {isLogin ? 'UNLOCK YOUR VAULT' : 'REGISTER TIME CAPSULE'}
+          <h2 className="text-2xl font-bold font-antique text-amber-100 tracking-wide">
+            {mode === 'login' ? 'Unlock Your Vault' : 'Create Your Free Vault'}
           </h2>
-          <p className="text-xs text-amber-300/70 mt-1 font-serif italic">
-            {isLogin
-              ? 'Enter your name, registered email or phone, and master password.'
-              : 'Permanent, completely private vault. Free forever with zero subscriptions.'}
+          <p className="text-xs text-stone-400 mt-1">
+            {mode === 'login'
+              ? 'Enter your credentials to access your private memories'
+              : 'Permanent, free, and strictly isolated to you alone'}
           </p>
+        </div>
 
-          {/* Mode Switcher Tabs */}
-          <div className="mt-5 grid grid-cols-2 p-1 bg-[#090b10] rounded-xl border border-slate-800">
-            <button
-              type="button"
-              onClick={() => { setIsLogin(true); setError(''); }}
-              className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-                isLogin
-                  ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Sign In (Members)
-            </button>
-            <button
-              type="button"
-              onClick={() => { setIsLogin(false); setError(''); }}
-              className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-                !isLogin
-                  ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              New Registration
-            </button>
+        {/* Tab Switcher */}
+        <div className="flex rounded-lg bg-stone-950 p-1 mb-6 border border-stone-800">
+          <button
+            type="button"
+            onClick={() => { setMode('login'); setError(''); }}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
+              mode === 'login'
+                ? 'bg-amber-900/60 text-amber-200 border border-amber-700/50 shadow-sm'
+                : 'text-stone-400 hover:text-stone-200'
+            }`}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode('register'); setError(''); }}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
+              mode === 'register'
+                ? 'bg-amber-900/60 text-amber-200 border border-amber-700/50 shadow-sm'
+                : 'text-stone-400 hover:text-stone-200'
+            }`}
+          >
+            New Register
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-rose-950/80 border border-rose-800/80 text-rose-200 text-xs flex items-center space-x-2">
+            <span className="font-bold">Notice:</span>
+            <span>{error}</span>
           </div>
-        </div>
+        )}
 
-        {/* Error / Success Notifications */}
-        <div className="px-6 pt-4">
-          {error && (
-            <div className="p-3 bg-red-950/40 border border-red-800/60 rounded-xl text-red-200 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-          {successMsg && (
-            <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-emerald-200 text-xs flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>{successMsg}</span>
-            </div>
-          )}
-        </div>
+        {successMsg && (
+          <div className="mb-4 p-3 rounded-lg bg-emerald-950/80 border border-emerald-800/80 text-emerald-200 text-xs">
+            {successMsg}
+          </div>
+        )}
 
-        {/* Forms Body */}
-        <div className="p-6 pt-3">
-          {isLogin ? (
-            /* ================= LOGIN FORM ================= */
-            <form onSubmit={handleLoginSubmit} className="space-y-4">
+        {/* LOGIN FORM */}
+        {mode === 'login' ? (
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-stone-300 mb-1">
+                Email or Phone Number
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. user@vault.com or +1234567890"
+                  value={loginIdentifier}
+                  onChange={(e) => setLoginIdentifier(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2.5 bg-stone-950/90 border border-stone-700 rounded-lg text-sm text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                />
+                <Mail className="w-4 h-4 text-stone-500 absolute left-3 top-3" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-stone-300 mb-1">
+                Account Name
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  placeholder="Your full registered name"
+                  value={loginName}
+                  onChange={(e) => setLoginName(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2.5 bg-stone-950/90 border border-stone-700 rounded-lg text-sm text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                />
+                <User className="w-4 h-4 text-stone-500 absolute left-3 top-3" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-stone-300 mb-1">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  placeholder="••••••••"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className="w-full pl-10 pr-10 py-2.5 bg-stone-950/90 border border-stone-700 rounded-lg text-sm text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                />
+                <Lock className="w-4 h-4 text-stone-500 absolute left-3 top-3" />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3 text-stone-500 hover:text-stone-300"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full mt-2 py-3 px-4 bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 hover:from-amber-500 hover:to-amber-700 text-stone-950 font-bold rounded-lg text-sm shadow-lg shadow-amber-950 transition-all border border-amber-400/40 disabled:opacity-50"
+            >
+              {loading ? 'Authenticating...' : 'Enter Secret Vault'}
+            </button>
+          </form>
+        ) : (
+          /* REGISTER FORM */
+          <form onSubmit={handleRegister} className="space-y-3.5">
+            <div>
+              <label className="block text-xs font-medium text-stone-300 mb-1">
+                Full Name
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Eleanor Vance"
+                  value={regName}
+                  onChange={(e) => setRegName(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2 bg-stone-950/90 border border-stone-700 rounded-lg text-sm text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                />
+                <User className="w-4 h-4 text-stone-500 absolute left-3 top-2.5" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-amber-200/80 mb-1">
-                  Registered Name
+                <label className="block text-xs font-medium text-stone-300 mb-1">
+                  Email Address
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                   <input
-                    type="text"
+                    type="email"
                     required
-                    placeholder="Enter your account name"
-                    value={loginForm.name}
-                    onChange={(e) => setLoginForm({ ...loginForm, name: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2.5 bg-[#0a0c12] border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                    placeholder="name@email.com"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    className="w-full pl-9 pr-2 py-2 bg-stone-950/90 border border-stone-700 rounded-lg text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                   />
+                  <Mail className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-2.5" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-amber-200/80 mb-1">
-                  Email or Phone Number
+                <label className="block text-xs font-medium text-stone-300 mb-1">
+                  Phone Number
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                   <input
-                    type="text"
+                    type="tel"
                     required
-                    placeholder="example@mail.com or +1234567890"
-                    value={loginForm.identifier}
-                    onChange={(e) => setLoginForm({ ...loginForm, identifier: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2.5 bg-[#0a0c12] border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                    placeholder="+1 555-0199"
+                    value={regPhone}
+                    onChange={(e) => setRegPhone(e.target.value)}
+                    className="w-full pl-9 pr-2 py-2 bg-stone-950/90 border border-stone-700 rounded-lg text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                   />
+                  <Phone className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-2.5" />
                 </div>
               </div>
+            </div>
 
+            <div>
+              <label className="block text-xs font-medium text-stone-300 mb-1">
+                Date of Birth
+              </label>
+              <div className="relative">
+                <input
+                  type="date"
+                  required
+                  value={regDob}
+                  onChange={(e) => setRegDob(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2 bg-stone-950/90 border border-stone-700 rounded-lg text-sm text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 [color-scheme:dark]"
+                />
+                <Calendar className="w-4 h-4 text-stone-500 absolute left-3 top-2.5" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-amber-200/80 mb-1">
-                  Master Password
+                <label className="block text-xs font-medium text-stone-300 mb-1">
+                  Password
                 </label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
-                    placeholder="••••••••"
-                    value={loginForm.password}
-                    onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                    className="w-full pl-9 pr-10 py-2.5 bg-[#0a0c12] border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                    placeholder="Min. 6 chars"
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    className="w-full pl-9 pr-2 py-2 bg-stone-950/90 border border-stone-700 rounded-lg text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-200"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full mt-2 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-950/40 font-cinzel tracking-wider text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {loading ? 'Unlocking Memory Vault...' : 'Access My Private Vault'}
-              </button>
-            </form>
-          ) : (
-            /* ================= REGISTER FORM ================= */
-            <form onSubmit={handleRegisterSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-amber-200/80 mb-1">
-                  Full Name
-                </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Your legal or chosen name"
-                    value={regForm.name}
-                    onChange={(e) => setRegForm({ ...regForm, name: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2 bg-[#0a0c12] border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-400"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-xs font-medium text-amber-200/80 mb-1">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                    <input
-                      type="email"
-                      required
-                      placeholder="you@email.com"
-                      value={regForm.email}
-                      onChange={(e) => setRegForm({ ...regForm, email: e.target.value })}
-                      className="w-full pl-9 pr-3 py-2 bg-[#0a0c12] border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-amber-200/80 mb-1">
-                    Phone Number
-                  </label>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                    <input
-                      type="tel"
-                      required
-                      placeholder="+1 234 567 890"
-                      value={regForm.phone}
-                      onChange={(e) => setRegForm({ ...regForm, phone: e.target.value })}
-                      className="w-full pl-9 pr-3 py-2 bg-[#0a0c12] border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400"
-                    />
-                  </div>
+                  <Lock className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-2.5" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-amber-200/80 mb-1">
-                  Date of Birth (System)
+                <label className="block text-xs font-medium text-stone-300 mb-1">
+                  Confirm Password
                 </label>
                 <div className="relative">
-                  <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  <input
-                    type="date"
-                    required
-                    value={regForm.dob}
-                    onChange={(e) => setRegForm({ ...regForm, dob: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2 bg-[#0a0c12] border border-slate-700/80 rounded-xl text-slate-100 text-xs focus:outline-none focus:border-amber-400"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-xs font-medium text-amber-200/80 mb-1">
-                    Password
-                  </label>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="Min 6 chars"
-                    value={regForm.password}
-                    onChange={(e) => setRegForm({ ...regForm, password: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#0a0c12] border border-slate-700/80 rounded-xl text-slate-100 text-xs focus:outline-none focus:border-amber-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-amber-200/80 mb-1">
-                    Confirm Password
-                  </label>
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     placeholder="Repeat password"
-                    value={regForm.confirmPassword}
-                    onChange={(e) => setRegForm({ ...regForm, confirmPassword: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#0a0c12] border border-slate-700/80 rounded-xl text-slate-100 text-xs focus:outline-none focus:border-amber-400"
+                    value={regConfirmPassword}
+                    onChange={(e) => setRegConfirmPassword(e.target.value)}
+                    className="w-full pl-9 pr-2 py-2 bg-stone-950/90 border border-stone-700 rounded-lg text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                   />
+                  <Lock className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-2.5" />
                 </div>
               </div>
-
-              <div className="flex items-center justify-between pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="text-xs text-slate-400 hover:text-amber-300 flex items-center gap-1.5"
-                >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  <span>{showPassword ? 'Hide Passwords' : 'Show Passwords'}</span>
-                </button>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full mt-2 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-950/40 font-cinzel tracking-wider text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {loading ? 'Sealing New Vault...' : 'Create My Free Lifetime Vault'}
-              </button>
-            </form>
-          )}
-
-          {/* Instant Guest Access Button */}
-          <div className="mt-4 pt-3 border-t border-slate-800/80">
-            <button
-              type="button"
-              onClick={handleGuestEntry}
-              className="w-full py-2.5 bg-[#171e2c] hover:bg-[#1d2638] text-amber-200 border border-amber-500/30 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-md"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Instant Guest Entry (Enter Inside Parts Immediately)</span>
-            </button>
-          </div>
-
-          {/* Privacy & Lifetime Storage Guarantee */}
-          <div className="mt-4 pt-3 border-t border-slate-800/70 text-center">
-            <div className="flex items-center justify-center gap-1.5 text-[11px] text-emerald-400 font-medium">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Absolute Privacy Isolation • Permanent Retention Guaranteed</span>
             </div>
-            <p className="text-[10px] text-slate-500 mt-1">
-              Your uploaded photos, videos, and written diaries are 100% private to you and never shared.
+
+            <div className="pt-1 flex items-center justify-between">
+              <label className="flex items-center space-x-2 text-xs text-stone-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showPassword}
+                  onChange={() => setShowPassword(!showPassword)}
+                  className="rounded border-stone-700 bg-stone-950 text-amber-500 focus:ring-amber-500"
+                />
+                <span>Show passwords</span>
+              </label>
+            </div>
+
+            <div className="p-2.5 bg-amber-950/40 rounded-lg border border-amber-800/40 flex items-start space-x-2 text-[11px] text-amber-200/90">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <span>
+                <strong>100% Free & Private:</strong> Permanent storage with no fees or subscription. Only you can view your uploads and diaries.
+              </span>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full mt-2 py-3 px-4 bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 hover:from-amber-500 hover:to-amber-700 text-stone-950 font-bold rounded-lg text-sm shadow-lg shadow-amber-950 transition-all border border-amber-400/40 disabled:opacity-50"
+            >
+              {loading ? 'Creating Vault...' : 'Seal & Create Permanent Vault'}
+            </button>
+          </form>
+        )}
+
+        {/* Switch mode footer */}
+        <div className="text-center mt-5 text-xs text-stone-400">
+          {mode === 'login' ? (
+            <p>
+              Don't have a vault yet?{' '}
+              <button
+                type="button"
+                onClick={() => { setMode('register'); setError(''); }}
+                className="text-amber-400 hover:underline font-semibold"
+              >
+                Register free here
+              </button>
             </p>
-          </div>
+          ) : (
+            <p>
+              Already hold an account?{' '}
+              <button
+                type="button"
+                onClick={() => { setMode('login'); setError(''); }}
+                className="text-amber-400 hover:underline font-semibold"
+              >
+                Sign in with credentials
+              </button>
+            </p>
+          )}
         </div>
       </div>
     </div>

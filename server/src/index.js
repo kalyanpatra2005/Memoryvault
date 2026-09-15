@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const dotenv = require('dotenv');
 const { initDb } = require('./db');
 
@@ -42,6 +43,19 @@ app.get('/api/health', (req, res) => {
     security: 'Strict per-user data isolation active'
   });
 });
+
+// Serve frontend build if available
+const clientDistPath = path.join(__dirname, '../../client/dist');
+const rootDistPath = path.join(__dirname, '../../dist');
+const distDir = fs.existsSync(clientDistPath) ? clientDistPath : (fs.existsSync(rootDistPath) ? rootDistPath : null);
+
+if (distDir) {
+  app.use(express.static(distDir));
+  app.get('*', (req, res, next) => {
+    if (req.url.startsWith('/api')) return next();
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+}
 
 // Global error handler
 app.use((err, req, res, next) => {

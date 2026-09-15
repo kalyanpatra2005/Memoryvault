@@ -6,33 +6,32 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        serif: ['Georgia', 'Cambria', 'Baskerville', 'serif'],
+        vintage: ['"Playfair Display"', 'Georgia', 'serif'],
+        handwritten: ['"Caveat"', '"Dancing Script"', 'cursive', 'Georgia']
+      },
       colors: {
         parchment: {
-          50: '#fdfbf7',
-          100: '#f7f2e7',
-          200: '#eee3cb',
-          300: '#e1cea7',
-          400: '#d0b37d',
-          500: '#b99557',
-          800: '#543d22',
-          900: '#382614',
-          950: '#22160a',
+          50: '#faf7f0',
+          100: '#f4efe0',
+          200: '#e8ddc4',
+          300: '#dac7a3',
+          400: '#c5ab7d',
+          500: '#b1915e',
+          600: '#9b7a4b',
+          700: '#7d5f3c',
+          800: '#644c33',
+          900: '#4e3b2b',
         },
         vault: {
-          dark: '#0e1117',
-          card: '#161b22',
-          border: '#30363d',
-          gold: '#d4af37',
-          amber: '#f59e0b',
-          tragic: '#8b263e',
-          sepia: '#704214'
+          950: '#07090e',
+          900: '#0d1117',
+          850: '#121720',
+          800: '#161c28',
+          700: '#232d3f',
+          accent: '#d4af37'
         }
-      },
-      fontFamily: {
-        serif: ['"Playfair Display"', 'Georgia', 'serif'],
-        cinzel: ['"Cinzel"', 'serif'],
-        typewriter: ['"Special Elite"', '"Courier New"', 'monospace'],
-        handwriting: ['"IM Fell English"', 'Georgia', 'serif']
       }
     },
   },
