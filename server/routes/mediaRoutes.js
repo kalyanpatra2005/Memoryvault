@@ -77,16 +77,26 @@ function authenticateMedia(req, res, next) {
 router.get('/', requireAuth, (req, res) => {
   try {
     const type = req.query.type; // 'photo', 'video', or undefined for all
-    let query = 'SELECT * FROM media WHERE user_id = ?';
-    const params = [req.user.id];
+    let mediaList = db.prepare('SELECT * FROM media WHERE user_id = ? ORDER BY created_at DESC').all(req.user.id);
+    const videoExtRegex = /\.(mp4|webm|mov|mkv|avi|m4v|3gp|3gpp|3g2|wmv|flv|ogv|ts|mts|m2ts|qt|asf|vob|divx)$/i;
+
+    mediaList = mediaList.map(item => {
+      const isVideo = item.media_type === 'video' ||
+        (item.mime_type && item.mime_type.toLowerCase().startsWith('video/')) ||
+        videoExtRegex.test(item.filename || '') ||
+        videoExtRegex.test(item.original_name || '');
+      const mediaType = isVideo ? 'video' : 'photo';
+      return {
+        ...item,
+        type: mediaType,
+        media_type: mediaType
+      };
+    });
 
     if (type === 'photo' || type === 'video') {
-      query += ' AND media_type = ?';
-      params.push(type);
+      mediaList = mediaList.filter(item => item.media_type === type);
     }
-    query += ' ORDER BY created_at DESC';
 
-    const mediaList = db.prepare(query).all(...params);
     res.json({ media: mediaList });
   } catch (err) {
     console.error('Fetch media error:', err);
@@ -111,7 +121,7 @@ router.post('/upload', requireAuth, upload.array('files', 15), (req, res) => {
     `);
 
     for (const file of req.files) {
-      const isVideo = file.mimetype.startsWith('video/') || /\.(mp4|webm|mov|mkv|avi|m4v|3gp|wmv|flv|ogv|ts|mts|m2ts|qt)$/i.test(file.originalname);
+      const isVideo = file.mimetype.toLowerCase().startsWith('video/') || /\.(mp4|webm|mov|mkv|avi|m4v|3gp|3gpp|3g2|wmv|flv|ogv|ts|mts|m2ts|qt|asf|vob|divx)$/i.test(file.originalname);
       const mediaType = isVideo ? 'video' : 'photo';
       const relPath = `${req.user.id}/${file.filename}`;
 

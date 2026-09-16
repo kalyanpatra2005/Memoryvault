@@ -83,12 +83,14 @@ try {
       mime_type LIKE 'video/%' OR
       lower(filename) LIKE '%.mp4' OR lower(filename) LIKE '%.mov' OR lower(filename) LIKE '%.webm' OR 
       lower(filename) LIKE '%.mkv' OR lower(filename) LIKE '%.avi' OR lower(filename) LIKE '%.m4v' OR 
-      lower(filename) LIKE '%.3gp' OR lower(filename) LIKE '%.wmv' OR lower(filename) LIKE '%.flv' OR 
-      lower(filename) LIKE '%.ogv' OR lower(filename) LIKE '%.ts' OR
+      lower(filename) LIKE '%.3gp' OR lower(filename) LIKE '%.3gpp' OR lower(filename) LIKE '%.wmv' OR 
+      lower(filename) LIKE '%.flv' OR lower(filename) LIKE '%.ogv' OR lower(filename) LIKE '%.ts' OR 
+      lower(filename) LIKE '%.m2ts' OR lower(filename) LIKE '%.qt' OR
       lower(original_name) LIKE '%.mp4' OR lower(original_name) LIKE '%.mov' OR lower(original_name) LIKE '%.webm' OR 
       lower(original_name) LIKE '%.mkv' OR lower(original_name) LIKE '%.avi' OR lower(original_name) LIKE '%.m4v' OR 
-      lower(original_name) LIKE '%.3gp' OR lower(original_name) LIKE '%.wmv' OR lower(original_name) LIKE '%.flv' OR 
-      lower(original_name) LIKE '%.ogv' OR lower(original_name) LIKE '%.ts'
+      lower(original_name) LIKE '%.3gp' OR lower(original_name) LIKE '%.3gpp' OR lower(original_name) LIKE '%.wmv' OR 
+      lower(original_name) LIKE '%.flv' OR lower(original_name) LIKE '%.ogv' OR lower(original_name) LIKE '%.ts' OR 
+      lower(original_name) LIKE '%.m2ts' OR lower(original_name) LIKE '%.qt'
     )
   `);
 } catch (e) {

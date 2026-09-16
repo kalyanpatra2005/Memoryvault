@@ -25,11 +25,27 @@ app.get('/api/health', (req, res) => {
 // Vault Statistics endpoint (user-specific)
 app.get('/api/stats', requireAuth, (req, res) => {
   try {
-    const photoCount = db.prepare("SELECT COUNT(*) as count FROM media WHERE user_id = ? AND media_type = 'photo'").get(req.user.id).count;
-    const videoCount = db.prepare("SELECT COUNT(*) as count FROM media WHERE user_id = ? AND media_type = 'video'").get(req.user.id).count;
+    const mediaItems = db.prepare('SELECT * FROM media WHERE user_id = ?').all(req.user.id);
+    let photoCount = 0;
+    let videoCount = 0;
+    let totalBytes = 0;
+    const videoExtRegex = /\.(mp4|webm|mov|mkv|avi|m4v|3gp|3gpp|3g2|wmv|flv|ogv|ts|mts|m2ts|qt|asf|vob|divx)$/i;
+
+    for (const item of mediaItems) {
+      totalBytes += Number(item.size_bytes || 0);
+      const isVid = item.media_type === 'video' ||
+        (item.mime_type && item.mime_type.toLowerCase().startsWith('video/')) ||
+        videoExtRegex.test(item.filename || '') ||
+        videoExtRegex.test(item.original_name || '');
+      if (isVid) {
+        videoCount++;
+      } else {
+        photoCount++;
+      }
+    }
+
     const diaryCount = db.prepare('SELECT COUNT(*) as count FROM diaries WHERE user_id = ?').get(req.user.id).count;
     const capsuleCount = db.prepare('SELECT COUNT(*) as count FROM capsules WHERE user_id = ?').get(req.user.id).count;
-    const totalBytes = db.prepare('SELECT COALESCE(SUM(size_bytes), 0) as total FROM media WHERE user_id = ?').get(req.user.id).total;
 
     // Fetch latest diary snippet
     const latestDiary = db.prepare('SELECT id, title, mood, created_at FROM diaries WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').get(req.user.id);

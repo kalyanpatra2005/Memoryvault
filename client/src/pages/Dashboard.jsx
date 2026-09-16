@@ -51,35 +51,25 @@ export default function Dashboard({ setActiveTab }) {
         }
       });
 
-      if (serverStats) {
-        setStats({
-          photos: Math.max(serverStats.photos || 0, localPhotos),
-          videos: Math.max(serverStats.videos || 0, localVideos),
-          diaries: Math.max(serverStats.diaries || 0, localDiaries.length),
-          capsules: serverStats.capsules || 0,
-          totalBytes: Math.max(serverStats.totalBytes || 0, localBytes),
-          latestDiary: serverStats.latestDiary || (localDiaries[0] ? {
-            title: localDiaries[0].title,
-            mood: localDiaries[0].mood,
-            created_at: localDiaries[0].created_at
-          } : null),
-          nextCapsule: serverStats.nextCapsule || null
-        });
-      } else {
-        setStats({
-          photos: localPhotos,
-          videos: localVideos,
-          diaries: localDiaries.length,
-          capsules: 0,
-          totalBytes: localBytes,
-          latestDiary: localDiaries[0] ? {
-            title: localDiaries[0].title,
-            mood: localDiaries[0].mood,
-            created_at: localDiaries[0].created_at
-          } : null,
-          nextCapsule: null
-        });
-      }
+      // When localItems are present, its dynamic item classification is authoritative
+      const finalPhotos = localItems.length > 0 ? localPhotos : (serverStats?.photos || 0);
+      const finalVideos = localItems.length > 0 ? localVideos : (serverStats?.videos || 0);
+      const finalBytes = Math.max(serverStats?.totalBytes || 0, localBytes);
+      const finalDiaries = Math.max(serverStats?.diaries || 0, localDiaries.length);
+
+      setStats({
+        photos: finalPhotos,
+        videos: finalVideos,
+        diaries: finalDiaries,
+        capsules: serverStats?.capsules || 0,
+        totalBytes: finalBytes,
+        latestDiary: serverStats?.latestDiary || (localDiaries[0] ? {
+          title: localDiaries[0].title,
+          mood: localDiaries[0].mood,
+          created_at: localDiaries[0].created_at
+        } : null),
+        nextCapsule: serverStats?.nextCapsule || null
+      });
     } catch (err) {
       console.error('Failed to load stats', err);
     } finally {

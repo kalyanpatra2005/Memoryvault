@@ -121,6 +121,15 @@ export const safeFetchJson = async (res) => {
   }
 };
 
+// Universal user matcher to prevent guest session token or ID changes from hiding local memories
+export const matchesUser = (itemUserId, targetUserId) => {
+  if (!targetUserId || !itemUserId) return true;
+  if (String(itemUserId) === String(targetUserId)) return true;
+  if (targetUserId === 'guest' || itemUserId === 'guest') return true;
+  if (String(targetUserId).startsWith('guest') || String(itemUserId).startsWith('guest')) return true;
+  return false;
+};
+
 // Universal helper to detect video media accurately across all formats and platforms
 export const isVideoMedia = (fileOrItem) => {
   if (!fileOrItem) return false;
@@ -133,9 +142,9 @@ export const isVideoMedia = (fileOrItem) => {
   const dataUrl = (fileOrItem.data_url || fileOrItem.media_url || fileOrItem.file_url || (typeof fileOrItem === 'string' ? fileOrItem : '')).toLowerCase();
   if (dataUrl.startsWith('data:video/')) return true;
 
-  const name = (fileOrItem.original_name || fileOrItem.name || fileOrItem.filename || fileOrItem.file_path || (typeof fileOrItem === 'string' ? fileOrItem : '')).toLowerCase();
+  const name = (fileOrItem.original_name || fileOrItem.name || fileOrItem.filename || fileOrItem.file_path || fileOrItem.caption || (typeof fileOrItem === 'string' ? fileOrItem : '')).toLowerCase();
   const cleanName = name.split('?')[0].split('#')[0];
-  return /\.(mp4|webm|mov|mkv|avi|m4v|3gp|wmv|flv|ogv|ts|mts|m2ts|qt)$/i.test(cleanName);
+  return /\.(mp4|webm|mov|mkv|avi|m4v|3gp|3gpp|3g2|wmv|flv|ogv|ts|mts|m2ts|qt|asf|vob|divx)$/i.test(cleanName);
 };
 // Cryptographic hash executed BEFORE any transaction
 async function hashPassword(str) {
@@ -396,7 +405,7 @@ export const vaultEngine = {
     try {
       const idbItems = await getIDBStoreData('vault_items');
       idbItems.forEach(item => {
-        if (!userId || String(item.user_id) === String(userId)) {
+        if (matchesUser(item.user_id, userId)) {
           if (!map.has(String(item.id))) {
             const isVideo = isVideoMedia(item);
             const mediaType = isVideo ? 'video' : 'photo';
@@ -415,7 +424,7 @@ export const vaultEngine = {
     try {
       const localItems = getLocalData('vault_items', []);
       localItems.forEach(item => {
-        if (!userId || String(item.user_id) === String(userId)) {
+        if (matchesUser(item.user_id, userId)) {
           if (!map.has(String(item.id))) {
             const isVideo = isVideoMedia(item);
             const mediaType = isVideo ? 'video' : 'photo';
@@ -581,7 +590,7 @@ export const vaultEngine = {
     try {
       const idbDiaries = await getIDBStoreData('diary_entries');
       idbDiaries.forEach(entry => {
-        if (!userId || String(entry.user_id) === String(userId)) {
+        if (matchesUser(entry.user_id, userId)) {
           if (!map.has(String(entry.id))) {
             map.set(String(entry.id), entry);
           }
@@ -593,7 +602,7 @@ export const vaultEngine = {
     try {
       const localDiaries = getLocalData('diary_entries', []);
       localDiaries.forEach(entry => {
-        if (!userId || String(entry.user_id) === String(userId)) {
+        if (matchesUser(entry.user_id, userId)) {
           if (!map.has(String(entry.id))) {
             map.set(String(entry.id), entry);
           }

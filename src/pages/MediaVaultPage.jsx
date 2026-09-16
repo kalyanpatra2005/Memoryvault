@@ -16,6 +16,10 @@ export default function MediaVaultPage() {
   const [uploadSuccess, setUploadSuccess] = useState('');
   const [uploadError, setUploadError] = useState('');
 
+  const [photoCount, setPhotoCount] = useState(0);
+  const [videoCount, setVideoCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+
   // Selected media for modal viewer
   const [selectedMedia, setSelectedMedia] = useState(null);
 
@@ -29,8 +33,7 @@ export default function MediaVaultPage() {
     try {
       let serverMedia = [];
       try {
-        const url = filterType === 'all' ? '/api/media' : `/api/media?type=${filterType}`;
-        const res = await authFetch(url);
+        const res = await authFetch('/api/media');
         const data = await safeFetchJson(res);
         if (res.ok && data && data.media) {
           serverMedia = data.media;
@@ -47,34 +50,47 @@ export default function MediaVaultPage() {
       serverMedia.forEach(item => {
         const isVideo = isVideoMedia(item);
         const mediaType = isVideo ? 'video' : 'photo';
-        if (filterType === 'all' || mediaType === filterType) {
-          map.set(String(item.id), {
-            ...item,
-            media_type: mediaType,
-            type: mediaType,
-            media_url: `/api/media/stream/${item.id}?token=${token}`
-          });
-        }
+        map.set(String(item.id), {
+          ...item,
+          media_type: mediaType,
+          type: mediaType,
+          media_url: `/api/media/stream/${item.id}?token=${token}`
+        });
       });
 
       localMedia.forEach(item => {
         const isVideo = isVideoMedia(item);
         const mediaType = isVideo ? 'video' : 'photo';
         if (!map.has(String(item.id))) {
-          if (filterType === 'all' || mediaType === filterType) {
-            map.set(String(item.id), {
-              ...item,
-              media_type: mediaType,
-              type: mediaType,
-              media_url: item.data_url || item.media_url || item.file_url
-            });
-          }
+          map.set(String(item.id), {
+            ...item,
+            media_type: mediaType,
+            type: mediaType,
+            media_url: item.data_url || item.media_url || item.file_url
+          });
         }
       });
 
-      const list = Array.from(map.values());
-      list.sort((a, b) => new Date(b.created_at || b.memory_date) - new Date(a.created_at || a.memory_date));
-      setMediaList(list);
+      const allItems = Array.from(map.values());
+      let pCount = 0;
+      let vCount = 0;
+      allItems.forEach(i => {
+        if (i.media_type === 'video') vCount++;
+        else pCount++;
+      });
+      setPhotoCount(pCount);
+      setVideoCount(vCount);
+      setTotalCount(allItems.length);
+
+      let filtered = allItems;
+      if (filterType === 'photo') {
+        filtered = allItems.filter(i => i.media_type === 'photo');
+      } else if (filterType === 'video') {
+        filtered = allItems.filter(i => i.media_type === 'video');
+      }
+
+      filtered.sort((a, b) => new Date(b.created_at || b.memory_date) - new Date(a.created_at || a.memory_date));
+      setMediaList(filtered);
     } catch (err) {
       console.error('Failed to load media', err);
     } finally {
@@ -223,7 +239,7 @@ export default function MediaVaultPage() {
                 : 'text-stone-400 hover:text-stone-200'
             }`}
           >
-            All Archive ({mediaList.length})
+            All Archive ({totalCount})
           </button>
           <button
             onClick={() => setFilterType('photo')}
@@ -234,7 +250,7 @@ export default function MediaVaultPage() {
             }`}
           >
             <ImageIcon className="w-3.5 h-3.5" />
-            <span>Photos</span>
+            <span>Photos ({photoCount})</span>
           </button>
           <button
             onClick={() => setFilterType('video')}
@@ -245,7 +261,7 @@ export default function MediaVaultPage() {
             }`}
           >
             <Film className="w-3.5 h-3.5" />
-            <span>Videos</span>
+            <span>Videos ({videoCount})</span>
           </button>
         </div>
       </div>
