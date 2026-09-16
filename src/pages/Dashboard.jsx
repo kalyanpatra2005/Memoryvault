@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { vaultEngine, safeFetchJson, isVideoMedia } from '../services/vaultEngine';
-import { BookOpen, Film, Clock, ShieldCheck, HardDrive, ArrowRight, Sparkles, Heart, PlusCircle, Calendar } from 'lucide-react';
+import { BookOpen, Film, Clock, ShieldCheck, HardDrive, ArrowRight, PlusCircle, Calendar } from 'lucide-react';
 
 export default function Dashboard({ setActiveTab }) {
   const { user, token, authFetch } = useAuth();
@@ -17,76 +17,94 @@ export default function Dashboard({ setActiveTab }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    let isMounted = true;
 
-  const fetchStats = async () => {
-    try {
-      let serverStats = null;
+    const fetchStats = async () => {
       try {
-        const res = await authFetch('/api/stats');
-        const data = await safeFetchJson(res);
-        if (res.ok && data && (data.photos !== undefined || data.videos !== undefined)) {
-          serverStats = data;
+        let serverStats = null;
+        try {
+          const res = await authFetch('/api/stats');
+          const data = await safeFetchJson(res);
+          if (res.ok && data && (data.photos !== undefined || data.videos !== undefined)) {
+            serverStats = data;
+          }
+        } catch (e) {}
+
+        // Fetch all vaulted items and diaries (IndexedDB + LocalStorage + Server synced)
+        const localItems = await vaultEngine.getVaultItems(token, user?.id || 'guest');
+        const localDiaries = await vaultEngine.getDiaries(token, user?.id || 'guest');
+
+        let localPhotos = 0;
+        let localVideos = 0;
+        let localBytes = 0;
+
+        localItems.forEach(item => {
+          const bytes = Number(item.size_bytes || item.file_size || 0) ||
+            (item.data_url ? Math.round(item.data_url.length * 0.75) : 0);
+          localBytes += bytes;
+
+          if (isVideoMedia(item)) {
+            localVideos++;
+          } else {
+            localPhotos++;
+          }
+        });
+
+        // Determine accurate photo & video counts
+        const totalServerMedia = (serverStats?.photos || 0) + (serverStats?.videos || 0);
+        const finalPhotos = localItems.length >= totalServerMedia ? localPhotos : Math.max(localPhotos, serverStats?.photos || 0);
+        const finalVideos = localItems.length >= totalServerMedia ? localVideos : Math.max(localVideos, serverStats?.videos || 0);
+        const finalBytes = Math.max(serverStats?.totalBytes || 0, localBytes);
+        const finalDiaries = Math.max(serverStats?.diaries || 0, localDiaries.length);
+
+        if (isMounted) {
+          setStats({
+            photos: finalPhotos,
+            videos: finalVideos,
+            diaries: finalDiaries,
+            capsules: serverStats?.capsules || 0,
+            totalBytes: finalBytes,
+            latestDiary: serverStats?.latestDiary || (localDiaries[0] ? {
+              title: localDiaries[0].title,
+              mood: localDiaries[0].mood,
+              created_at: localDiaries[0].created_at
+            } : null),
+            nextCapsule: serverStats?.nextCapsule || null
+          });
         }
-      } catch (e) {}
-
-      // Fetch all vaulted items and diaries (IndexedDB + LocalStorage + Server synced)
-      const localItems = await vaultEngine.getVaultItems(token, user?.id || 'guest');
-      const localDiaries = await vaultEngine.getDiaries(token, user?.id || 'guest');
-
-      let localPhotos = 0;
-      let localVideos = 0;
-      let localBytes = 0;
-
-      localItems.forEach(item => {
-        const bytes = Number(item.size_bytes || item.file_size || 0) ||
-          (item.data_url ? Math.round(item.data_url.length * 0.75) : 0);
-        localBytes += bytes;
-
-        if (isVideoMedia(item)) {
-          localVideos++;
-        } else {
-          localPhotos++;
+      } catch (err) {
+        console.error('Failed to load stats', err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
         }
-      });
+      }
+    };
 
-      // When localItems are present, its dynamic item classification is authoritative
-      const finalPhotos = localItems.length > 0 ? localPhotos : (serverStats?.photos || 0);
-      const finalVideos = localItems.length > 0 ? localVideos : (serverStats?.videos || 0);
-      const finalBytes = Math.max(serverStats?.totalBytes || 0, localBytes);
-      const finalDiaries = Math.max(serverStats?.diaries || 0, localDiaries.length);
+    fetchStats();
 
-      setStats({
-        photos: finalPhotos,
-        videos: finalVideos,
-        diaries: finalDiaries,
-        capsules: serverStats?.capsules || 0,
-        totalBytes: finalBytes,
-        latestDiary: serverStats?.latestDiary || (localDiaries[0] ? {
-          title: localDiaries[0].title,
-          mood: localDiaries[0].mood,
-          created_at: localDiaries[0].created_at
-        } : null),
-        nextCapsule: serverStats?.nextCapsule || null
-      });
-    } catch (err) {
-      console.error('Failed to load stats', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => {
+      isMounted = false;
+    };
+  }, [token, user?.id]);
 
   const formatBytes = (bytes) => {
-    if (bytes === 0) return '0 B';
+    if (!bytes || isNaN(bytes) || bytes <= 0) return '0 B';
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
+    const formatted = parseFloat((bytes / Math.pow(k, i)).toFixed(2));
+    return `${formatted} ${sizes[i]}`;
+  };
+
+  const formatDate = (dateVal, options) => {
+    if (!dateVal) return '';
+    const d = new Date(dateVal);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, options);
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 transition-opacity duration-300 ${loading ? 'opacity-80' : 'opacity-100'}`}>
       
       {/* Header Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-stone-900 via-vault-900 to-amber-950/40 border border-amber-900/40 p-6 sm:p-10 shadow-2xl mb-8">
@@ -97,7 +115,7 @@ export default function Dashboard({ setActiveTab }) {
               <span>PERMANENT & PRIVATE VAULT</span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-bold font-antique text-stone-100">
-              Welcome back to your Sanctuary, <span className="text-amber-200">{user?.name?.replace(/\.+$/, '')}</span>.
+              Welcome back to your Sanctuary, <span className="text-amber-200">{user?.name ? user.name.replace(/\.+$/, '') : 'Honored Keeper'}</span>.
             </h1>
             <p className="text-stone-400 text-sm sm:text-base font-serif mt-2 max-w-2xl">
               All your memories, tragic diary writings, photographs, and sealed time capsules are permanently safeguarded here. Nobody can access them except you.
@@ -143,7 +161,7 @@ export default function Dashboard({ setActiveTab }) {
             </span>
           </div>
           <div className="text-2xl sm:text-3xl font-bold font-antique text-stone-100">
-            {stats.photos} <span className="text-xs font-normal text-stone-400 font-sans">photos</span> · {stats.videos} <span className="text-xs font-normal text-stone-400 font-sans">videos</span>
+            {stats.photos} <span className="text-xs font-normal text-stone-400 font-sans">{stats.photos === 1 ? 'photo' : 'photos'}</span> · {stats.videos} <span className="text-xs font-normal text-stone-400 font-sans">{stats.videos === 1 ? 'video' : 'videos'}</span>
           </div>
           <div className="mt-1 text-xs text-stone-400 flex items-center space-x-1">
             <HardDrive className="w-3 h-3 text-stone-500 inline" />
@@ -165,7 +183,7 @@ export default function Dashboard({ setActiveTab }) {
             </span>
           </div>
           <div className="text-2xl sm:text-3xl font-bold font-antique text-stone-100">
-            {stats.diaries} <span className="text-xs font-normal text-stone-400 font-sans">entries</span>
+            {stats.diaries} <span className="text-xs font-normal text-stone-400 font-sans">{stats.diaries === 1 ? 'entry' : 'entries'}</span>
           </div>
           <p className="mt-1 text-xs text-stone-400">
             Parchment writings & heartbreaks
@@ -186,7 +204,7 @@ export default function Dashboard({ setActiveTab }) {
             </span>
           </div>
           <div className="text-2xl sm:text-3xl font-bold font-antique text-stone-100">
-            {stats.capsules} <span className="text-xs font-normal text-stone-400 font-sans">capsules</span>
+            {stats.capsules} <span className="text-xs font-normal text-stone-400 font-sans">{stats.capsules === 1 ? 'capsule' : 'capsules'}</span>
           </div>
           <p className="mt-1 text-xs text-stone-400">
             Cast into future dates
@@ -236,7 +254,7 @@ export default function Dashboard({ setActiveTab }) {
                   </span>
                 </div>
                 <p className="text-xs text-stone-400">
-                  Written on {new Date(stats.latestDiary.created_at).toLocaleDateString(undefined, { dateStyle: 'long' })}
+                  Written on {formatDate(stats.latestDiary.created_at, { dateStyle: 'long' })}
                 </p>
               </div>
             ) : (
@@ -277,7 +295,7 @@ export default function Dashboard({ setActiveTab }) {
                 </div>
                 <div className="flex items-center space-x-1.5 text-xs text-amber-400/90">
                   <Calendar className="w-3.5 h-3.5" />
-                  <span>Unlocks on: {new Date(stats.nextCapsule.unlock_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
+                  <span>Unlocks on: {formatDate(stats.nextCapsule.unlock_date, { dateStyle: 'medium' })}</span>
                 </div>
               </div>
             ) : (
