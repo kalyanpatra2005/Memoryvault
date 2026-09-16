@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { vaultEngine, safeFetchJson } from '../services/vaultEngine';
+import { vaultEngine, safeFetchJson, isVideoMedia } from '../services/vaultEngine';
 import { 
   Film, Image as ImageIcon, UploadCloud, Trash2, Eye, ShieldCheck, 
   Lock, Play, Calendar, HardDrive, Download, AlertTriangle, CheckCircle 
@@ -45,20 +45,27 @@ export default function MediaVaultPage() {
       // Combine server & local items
       const map = new Map();
       serverMedia.forEach(item => {
-        map.set(String(item.id), {
-          ...item,
-          media_type: item.media_type || (item.mime_type?.startsWith('video/') ? 'video' : 'photo'),
-          media_url: `/api/media/stream/${item.id}?token=${token}`
-        });
+        const isVideo = isVideoMedia(item);
+        const mediaType = isVideo ? 'video' : 'photo';
+        if (filterType === 'all' || mediaType === filterType) {
+          map.set(String(item.id), {
+            ...item,
+            media_type: mediaType,
+            type: mediaType,
+            media_url: `/api/media/stream/${item.id}?token=${token}`
+          });
+        }
       });
 
       localMedia.forEach(item => {
-        const itemType = item.media_type || item.type || 'photo';
+        const isVideo = isVideoMedia(item);
+        const mediaType = isVideo ? 'video' : 'photo';
         if (!map.has(String(item.id))) {
-          if (filterType === 'all' || itemType === filterType) {
+          if (filterType === 'all' || mediaType === filterType) {
             map.set(String(item.id), {
               ...item,
-              media_type: itemType,
+              media_type: mediaType,
+              type: mediaType,
               media_url: item.data_url || item.media_url || item.file_url
             });
           }
@@ -289,7 +296,7 @@ export default function MediaVaultPage() {
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/*,video/*"
+              accept="image/*,video/*,.mp4,.mov,.webm,.mkv,.avi,.m4v,.3gp,.wmv,.flv,.ogv,.ts,.mts,.m2ts,.qt"
               onChange={handleFileUpload}
               disabled={uploading}
               className="hidden"
@@ -324,7 +331,7 @@ export default function MediaVaultPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {mediaList.map((item) => {
-            const isVideo = item.media_type === 'video';
+            const isVideo = isVideoMedia(item);
             const mediaUrl = getMediaUrl(item);
 
             return (
@@ -408,7 +415,7 @@ export default function MediaVaultPage() {
             <div className="flex items-center justify-between p-4 border-b border-stone-800 bg-stone-950">
               <div className="flex items-center space-x-2">
                 <span className="px-2 py-0.5 rounded text-[10px] uppercase font-mono bg-amber-950 text-amber-300 border border-amber-800/60">
-                  {selectedMedia.media_type}
+                  {isVideoMedia(selectedMedia) ? 'video' : 'photo'}
                 </span>
                 <span className="text-sm font-antique font-bold text-stone-200 truncate max-w-md">
                   {selectedMedia.caption || selectedMedia.original_name}
@@ -424,7 +431,7 @@ export default function MediaVaultPage() {
 
             {/* Media Content */}
             <div className="flex-1 bg-black flex items-center justify-center overflow-auto p-2">
-              {selectedMedia.media_type === 'video' ? (
+              {isVideoMedia(selectedMedia) ? (
                 <video
                   controls
                   autoPlay

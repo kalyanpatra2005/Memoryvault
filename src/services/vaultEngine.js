@@ -120,6 +120,23 @@ export const safeFetchJson = async (res) => {
     return null;
   }
 };
+
+// Universal helper to detect video media accurately across all formats and platforms
+export const isVideoMedia = (fileOrItem) => {
+  if (!fileOrItem) return false;
+  const explicitType = (fileOrItem.media_type || fileOrItem.type || '').toLowerCase();
+  if (explicitType === 'video') return true;
+
+  const mime = (fileOrItem.mime_type || fileOrItem.mimetype || fileOrItem.type || '').toLowerCase();
+  if (mime.startsWith('video/')) return true;
+
+  const dataUrl = (fileOrItem.data_url || fileOrItem.media_url || fileOrItem.file_url || (typeof fileOrItem === 'string' ? fileOrItem : '')).toLowerCase();
+  if (dataUrl.startsWith('data:video/')) return true;
+
+  const name = (fileOrItem.original_name || fileOrItem.name || fileOrItem.filename || fileOrItem.file_path || (typeof fileOrItem === 'string' ? fileOrItem : '')).toLowerCase();
+  const cleanName = name.split('?')[0].split('#')[0];
+  return /\.(mp4|webm|mov|mkv|avi|m4v|3gp|wmv|flv|ogv|ts|mts|m2ts|qt)$/i.test(cleanName);
+};
 // Cryptographic hash executed BEFORE any transaction
 async function hashPassword(str) {
   if (typeof window === 'undefined' || !window.crypto || !window.crypto.subtle) {
@@ -311,25 +328,42 @@ export const vaultEngine = {
 
   // ================= PROFILE & STATS =================
   async getProfile(token, userId) {
+    let serverData = null;
     try {
       const res = await fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await safeJsonParse(res);
-      if (res.ok && data && data.user) return data;
+      const data = await safeFetchJson(res);
+      if (res.ok && data && data.user) serverData = data;
     } catch (e) {}
 
-    const items = getLocalData('vault_items', []).filter(i => i.user_id === userId);
-    const diaries = getLocalData('diary_entries', []).filter(d => d.user_id === userId);
+    const items = await this.getVaultItems(token, userId);
+    const diaries = await this.getDiaries(token, userId);
+
+    let photoCount = 0;
+    let videoCount = 0;
+    let totalBytes = 0;
+
+    items.forEach(i => {
+      const b = Number(i.size_bytes || i.file_size || 0) || (i.data_url ? Math.round(i.data_url.length * 0.75) : 0);
+      totalBytes += b;
+      if (isVideoMedia(i)) {
+        videoCount++;
+      } else {
+        photoCount++;
+      }
+    });
+
     const users = getLocalData('users', []);
-    const user = users.find(u => u.id === userId) || JSON.parse(localStorage.getItem('vault_user') || '{}');
+    const user = (serverData && serverData.user) || users.find(u => u.id === userId) || JSON.parse(localStorage.getItem('vault_user') || '{}');
 
     return {
       user,
       stats: {
-        photos: items.filter(i => i.type === 'photo').length,
-        videos: items.filter(i => i.type === 'video').length,
-        diaries: diaries.length
+        photos: photoCount,
+        videos: videoCount,
+        diaries: diaries.length,
+        totalBytes
       }
     };
   },
@@ -346,9 +380,12 @@ export const vaultEngine = {
       const data = await safeFetchJson(res);
       if (res.ok && data && (data.media || data.items)) {
         (data.media || data.items).forEach(item => {
+          const isVideo = isVideoMedia(item);
+          const mediaType = isVideo ? 'video' : 'photo';
           map.set(String(item.id), {
             ...item,
-            type: item.media_type || item.type || 'photo',
+            type: mediaType,
+            media_type: mediaType,
             media_url: item.media_url || `/api/media/stream/${item.id}?token=${token}`
           });
         });
@@ -361,9 +398,12 @@ export const vaultEngine = {
       idbItems.forEach(item => {
         if (!userId || String(item.user_id) === String(userId)) {
           if (!map.has(String(item.id))) {
+            const isVideo = isVideoMedia(item);
+            const mediaType = isVideo ? 'video' : 'photo';
             map.set(String(item.id), {
               ...item,
-              type: item.media_type || item.type || 'photo',
+              type: mediaType,
+              media_type: mediaType,
               media_url: item.data_url || item.media_url || item.file_url
             });
           }
@@ -377,9 +417,12 @@ export const vaultEngine = {
       localItems.forEach(item => {
         if (!userId || String(item.user_id) === String(userId)) {
           if (!map.has(String(item.id))) {
+            const isVideo = isVideoMedia(item);
+            const mediaType = isVideo ? 'video' : 'photo';
             map.set(String(item.id), {
               ...item,
-              type: item.media_type || item.type || 'photo',
+              type: mediaType,
+              media_type: mediaType,
               media_url: item.data_url || item.media_url || item.file_url
             });
           }
@@ -401,8 +444,12 @@ export const vaultEngine = {
     const now = new Date();
     const processed = items.map(item => {
       const isLocked = item.unlock_date && new Date(item.unlock_date) > now;
+      const isVideo = isVideoMedia(item);
+      const mediaType = isVideo ? 'video' : 'photo';
       return {
         ...item,
+        type: mediaType,
+        media_type: mediaType,
         is_locked: !!isLocked,
         media_url: item.data_url || item.media_url || item.file_url || `/api/media/stream/${item.id}?token=${token}`
       };
@@ -431,13 +478,20 @@ export const vaultEngine = {
       if (res.ok && data) {
         if (data.media && data.media.length > 0) {
           const item = data.media[0];
+          const isVideo = isVideoMedia(item) || isVideoMedia(file);
+          const mediaType = isVideo ? 'video' : 'photo';
           return {
             ...item,
-            type: item.media_type,
+            type: mediaType,
+            media_type: mediaType,
             media_url: `/api/media/stream/${item.id}?token=${token}`
           };
         }
-        if (data.item) return data.item;
+        if (data.item) {
+          const isVideo = isVideoMedia(data.item) || isVideoMedia(file);
+          const mediaType = isVideo ? 'video' : 'photo';
+          return { ...data.item, type: mediaType, media_type: mediaType };
+        }
       }
     } catch (e) {}
 
@@ -447,7 +501,7 @@ export const vaultEngine = {
       reader.onload = async () => {
         try {
           const dataUrl = reader.result;
-          const isVideo = file.type.startsWith('video/');
+          const isVideo = isVideoMedia(file);
           const newItem = {
             id: Date.now() + Math.floor(Math.random() * 1000),
             user_id: userId,
@@ -456,7 +510,7 @@ export const vaultEngine = {
             original_name: file.name,
             file_size: file.size,
             size_bytes: file.size,
-            mime_type: file.type,
+            mime_type: file.type || (isVideo ? 'video/mp4' : 'image/jpeg'),
             data_url: dataUrl,
             media_url: dataUrl,
             caption: caption || '',

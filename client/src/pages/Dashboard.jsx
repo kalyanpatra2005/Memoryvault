@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { vaultEngine, safeFetchJson } from '../services/vaultEngine';
+import { vaultEngine, safeFetchJson, isVideoMedia } from '../services/vaultEngine';
 import { BookOpen, Film, Clock, ShieldCheck, HardDrive, ArrowRight, Sparkles, Heart, PlusCircle, Calendar } from 'lucide-react';
 
 export default function Dashboard({ setActiveTab }) {
@@ -22,32 +22,63 @@ export default function Dashboard({ setActiveTab }) {
 
   const fetchStats = async () => {
     try {
-      let loadedStats = null;
+      let serverStats = null;
       try {
         const res = await authFetch('/api/stats');
         const data = await safeFetchJson(res);
-        if (res.ok && data) {
-          loadedStats = data;
+        if (res.ok && data && (data.photos !== undefined || data.videos !== undefined)) {
+          serverStats = data;
         }
       } catch (e) {}
 
-      if (!loadedStats) {
-        const profile = await vaultEngine.getProfile(token, user?.id || 'guest');
-        if (profile && profile.stats) {
-          loadedStats = {
-            photos: profile.stats.photos || 0,
-            videos: profile.stats.videos || 0,
-            diaries: profile.stats.diaries || 0,
-            capsules: 0,
-            totalBytes: 0,
-            latestDiary: null,
-            nextCapsule: null
-          };
-        }
-      }
+      // Fetch all vaulted items and diaries (IndexedDB + LocalStorage + Server synced)
+      const localItems = await vaultEngine.getVaultItems(token, user?.id || 'guest');
+      const localDiaries = await vaultEngine.getDiaries(token, user?.id || 'guest');
 
-      if (loadedStats) {
-        setStats(loadedStats);
+      let localPhotos = 0;
+      let localVideos = 0;
+      let localBytes = 0;
+
+      localItems.forEach(item => {
+        const bytes = Number(item.size_bytes || item.file_size || 0) ||
+          (item.data_url ? Math.round(item.data_url.length * 0.75) : 0);
+        localBytes += bytes;
+
+        if (isVideoMedia(item)) {
+          localVideos++;
+        } else {
+          localPhotos++;
+        }
+      });
+
+      if (serverStats) {
+        setStats({
+          photos: Math.max(serverStats.photos || 0, localPhotos),
+          videos: Math.max(serverStats.videos || 0, localVideos),
+          diaries: Math.max(serverStats.diaries || 0, localDiaries.length),
+          capsules: serverStats.capsules || 0,
+          totalBytes: Math.max(serverStats.totalBytes || 0, localBytes),
+          latestDiary: serverStats.latestDiary || (localDiaries[0] ? {
+            title: localDiaries[0].title,
+            mood: localDiaries[0].mood,
+            created_at: localDiaries[0].created_at
+          } : null),
+          nextCapsule: serverStats.nextCapsule || null
+        });
+      } else {
+        setStats({
+          photos: localPhotos,
+          videos: localVideos,
+          diaries: localDiaries.length,
+          capsules: 0,
+          totalBytes: localBytes,
+          latestDiary: localDiaries[0] ? {
+            title: localDiaries[0].title,
+            mood: localDiaries[0].mood,
+            created_at: localDiaries[0].created_at
+          } : null,
+          nextCapsule: null
+        });
       }
     } catch (err) {
       console.error('Failed to load stats', err);

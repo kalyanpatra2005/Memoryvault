@@ -35,8 +35,8 @@ const upload = multer({
   storage,
   limits: { fileSize: 250 * 1024 * 1024 }, // 250MB limit for high quality video/photo
   fileFilter: (req, file, cb) => {
-    const allowedImage = /jpeg|jpg|png|gif|webp|bmp|svg/;
-    const allowedVideo = /mp4|webm|mov|mkv|avi|quicktime/;
+    const allowedImage = /jpeg|jpg|png|gif|webp|bmp|svg|heic|heif/;
+    const allowedVideo = /mp4|webm|mov|mkv|avi|m4v|3gp|wmv|flv|ogv|ts|mts|m2ts|quicktime/;
     const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
     const mime = file.mimetype.toLowerCase();
 
@@ -111,7 +111,7 @@ router.post('/upload', requireAuth, upload.array('files', 15), (req, res) => {
     `);
 
     for (const file of req.files) {
-      const isVideo = file.mimetype.startsWith('video/') || /\.(mp4|webm|mov|mkv|avi)$/i.test(file.originalname);
+      const isVideo = file.mimetype.startsWith('video/') || /\.(mp4|webm|mov|mkv|avi|m4v|3gp|wmv|flv|ogv|ts|mts|m2ts|qt)$/i.test(file.originalname);
       const mediaType = isVideo ? 'video' : 'photo';
       const relPath = `${req.user.id}/${file.filename}`;
 

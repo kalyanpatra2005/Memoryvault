@@ -75,6 +75,22 @@ try {
   if (!mediaCols.includes('source')) {
     db.exec("ALTER TABLE media ADD COLUMN source TEXT DEFAULT 'vault'");
   }
+
+  // Ensure any videos previously misclassified as photos are fixed
+  db.exec(`
+    UPDATE media SET media_type = 'video' 
+    WHERE media_type = 'photo' AND (
+      mime_type LIKE 'video/%' OR
+      lower(filename) LIKE '%.mp4' OR lower(filename) LIKE '%.mov' OR lower(filename) LIKE '%.webm' OR 
+      lower(filename) LIKE '%.mkv' OR lower(filename) LIKE '%.avi' OR lower(filename) LIKE '%.m4v' OR 
+      lower(filename) LIKE '%.3gp' OR lower(filename) LIKE '%.wmv' OR lower(filename) LIKE '%.flv' OR 
+      lower(filename) LIKE '%.ogv' OR lower(filename) LIKE '%.ts' OR
+      lower(original_name) LIKE '%.mp4' OR lower(original_name) LIKE '%.mov' OR lower(original_name) LIKE '%.webm' OR 
+      lower(original_name) LIKE '%.mkv' OR lower(original_name) LIKE '%.avi' OR lower(original_name) LIKE '%.m4v' OR 
+      lower(original_name) LIKE '%.3gp' OR lower(original_name) LIKE '%.wmv' OR lower(original_name) LIKE '%.flv' OR 
+      lower(original_name) LIKE '%.ogv' OR lower(original_name) LIKE '%.ts'
+    )
+  `);
 } catch (e) {
   console.warn('Migration note:', e.message);
 }
