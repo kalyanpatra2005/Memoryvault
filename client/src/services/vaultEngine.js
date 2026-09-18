@@ -300,6 +300,8 @@ export const vaultEngine = {
           setLocalData('users', localUsers);
           await putIDBStoreItem('users', data.user);
         } catch (e) {}
+        // Auto-sync any local memories to cloud on login
+        this.syncLocalToCloud(data.token, data.user.id).catch(() => {});
         return data;
       }
       if (!res.ok && data && data.error) {
@@ -974,9 +976,17 @@ export const vaultEngine = {
   async syncLocalToCloud(token, userId) {
     if (!token || !userId) return;
     try {
-      // 1. Sync local media items
-      const localMedia = await getIDBStoreData('vault_items');
-      for (const item of localMedia) {
+      // 1. Sync local media items (combining IndexedDB and LocalStorage)
+      const idbMedia = await getIDBStoreData('vault_items');
+      const localMedia = getLocalData('vault_items', []);
+      const allMedia = [...idbMedia];
+      for (const m of localMedia) {
+        if (!allMedia.some(item => String(item.id) === String(m.id))) {
+          allMedia.push(m);
+        }
+      }
+
+      for (const item of allMedia) {
         if (matchesUser(item.user_id, userId) && item.data_url) {
           try {
             await fetch('/api/media/upload', {
@@ -998,9 +1008,17 @@ export const vaultEngine = {
         }
       }
 
-      // 2. Sync local diaries
-      const localDiaries = await getIDBStoreData('diary_entries');
-      for (const entry of localDiaries) {
+      // 2. Sync local diaries (combining IndexedDB and LocalStorage)
+      const idbDiaries = await getIDBStoreData('diary_entries');
+      const localDiaries = getLocalData('diary_entries', []);
+      const allDiaries = [...idbDiaries];
+      for (const d of localDiaries) {
+        if (!allDiaries.some(entry => String(entry.id) === String(d.id))) {
+          allDiaries.push(d);
+        }
+      }
+
+      for (const entry of allDiaries) {
         if (matchesUser(entry.user_id, userId)) {
           try {
             await fetch('/api/diary', {
