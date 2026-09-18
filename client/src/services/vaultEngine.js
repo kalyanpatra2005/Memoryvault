@@ -353,10 +353,6 @@ export const vaultEngine = {
       throw new Error('No account found with this email or phone number.');
     }
 
-    if (!namesMatch(user.name, form.name)) {
-      throw new Error('The provided name does not match the account records.');
-    }
-
     if (user.password_hash !== inputHash) {
       throw new Error('Incorrect master password.');
     }
@@ -373,6 +369,93 @@ export const vaultEngine = {
     const token = 'vault_session_' + btoa(JSON.stringify(safeUser));
     return {
       message: 'Vault unlocked successfully.',
+      token,
+      user: safeUser
+    };
+  },
+
+  async resetPassword({ identifier, dob, newPassword }) {
+    // 1. Try server first
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, dob, newPassword })
+      });
+      const data = await safeFetchJson(res);
+      if (res.ok && data && data.token && data.user) {
+        // Cache user in local store
+        try {
+          const localUsers = getLocalData('users', []);
+          const existingIdx = localUsers.findIndex(u => u.id === data.user.id || u.email === data.user.email);
+          if (existingIdx >= 0) {
+            localUsers[existingIdx] = { ...localUsers[existingIdx], ...data.user };
+          } else {
+            localUsers.push(data.user);
+          }
+          setLocalData('users', localUsers);
+          await putIDBStoreItem('users', data.user);
+        } catch (e) {}
+        return data;
+      }
+      if (!res.ok && data && data.error) {
+        throw new Error(data.error);
+      }
+    } catch (e) {
+      if (e.message && (e.message.includes('not match') || e.message.includes('No account found') || e.message.includes('least 6'))) {
+        throw e;
+      }
+    }
+
+    // 2. Local fallback
+    const idLower = (identifier || '').trim().toLowerCase();
+    let localUsers = getLocalData('users', []);
+    if (localUsers.length === 0) {
+      const db = await openDatabase();
+      if (db) {
+        try {
+          const tx = db.transaction(['users'], 'readonly');
+          localUsers = await new Promise(r => {
+            const req = tx.objectStore('users').getAll();
+            req.onsuccess = () => r(req.result || []);
+            req.onerror = () => r([]);
+          });
+        } catch (e) {}
+      }
+    }
+
+    const user = localUsers.find(
+      u => u.email.toLowerCase() === idLower || phonesMatch(u.phone, identifier)
+    );
+
+    if (!user) {
+      throw new Error('No account found with this email or phone number.');
+    }
+
+    if (user.dob && user.dob.trim() !== (dob || '').trim()) {
+      throw new Error('Date of Birth does not match the registered account records.');
+    }
+
+    const newHash = await hashPassword(newPassword);
+    user.password_hash = newHash;
+
+    const idx = localUsers.findIndex(u => u.id === user.id);
+    if (idx >= 0) localUsers[idx] = user;
+    setLocalData('users', localUsers);
+    await putIDBStoreItem('users', user);
+
+    const safeUser = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      dob: user.dob,
+      created_at: user.created_at
+    };
+
+    const token = 'vault_session_' + btoa(JSON.stringify(safeUser));
+    return {
+      message: 'Master password reset successfully. Vault unlocked.',
       token,
       user: safeUser
     };

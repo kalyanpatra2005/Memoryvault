@@ -88,17 +88,17 @@ router.post('/register', (req, res) => {
   }
 });
 
-// Login endpoint (accepts email or phone number, along with name and password)
+// Login endpoint (accepts email or phone number + password; name optional)
 router.post('/login', (req, res) => {
   try {
     const { identifier, name, password } = req.body;
 
-    if (!identifier || !name || !password) {
-      return res.status(400).json({ error: 'Please provide your Email or Phone Number, Name, and Password.' });
+    if (!identifier || !password) {
+      return res.status(400).json({ error: 'Please provide your Email or Phone Number and Master Password.' });
     }
 
     const cleanIdentifier = identifier.trim().toLowerCase();
-    const cleanName = name.trim();
+    const cleanName = name ? name.trim() : '';
 
     // 1. Look up user by exact email or phone
     let user = db.prepare(`
@@ -116,11 +116,6 @@ router.post('/login', (req, res) => {
 
     if (!user) {
       return res.status(401).json({ error: 'No account found with this email or phone number.' });
-    }
-
-    // Name verification (case, spacing, punctuation, and first-name tolerant)
-    if (!namesMatch(user.name, cleanName)) {
-      return res.status(401).json({ error: 'Account name does not match the credentials provided.' });
     }
 
     // Password verification
@@ -147,6 +142,51 @@ router.post('/login', (req, res) => {
   } catch (err) {
     console.error('Login error:', err);
     return res.status(500).json({ error: 'Login failed: ' + err.message });
+  }
+});
+
+// Reset Master Password endpoint using security DOB verification
+router.post('/reset-password', (req, res) => {
+  try {
+    const { identifier, dob, newPassword } = req.body;
+
+    if (!identifier || !dob || !newPassword) {
+      return res.status(400).json({ error: 'Please provide your Email/Phone, Date of Birth, and New Password.' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+    }
+
+    const cleanIdentifier = identifier.trim().toLowerCase();
+    let user = db.prepare('SELECT * FROM users WHERE (LOWER(email) = ? OR phone = ?)').get(cleanIdentifier, identifier.trim());
+    if (!user) {
+      const allUsers = db.prepare('SELECT * FROM users').all();
+      user = allUsers.find(u => u.email.toLowerCase() === cleanIdentifier || phonesMatch(u.phone, identifier));
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: 'No account found with this email or phone number.' });
+    }
+
+    // Compare Date of Birth
+    if (user.dob && user.dob.trim() !== dob.trim()) {
+      return res.status(401).json({ error: 'Date of Birth does not match the registered account records.' });
+    }
+
+    const newHash = hashPassword(newPassword);
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, user.id);
+    const updatedUser = db.prepare('SELECT id, name, email, phone, dob, created_at FROM users WHERE id = ?').get(user.id);
+    const token = generateToken(updatedUser);
+
+    return res.json({
+      message: 'Master password reset successfully. Vault unlocked.',
+      token,
+      user: updatedUser
+    });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    return res.status(500).json({ error: 'Reset password failed: ' + err.message });
   }
 });
 
