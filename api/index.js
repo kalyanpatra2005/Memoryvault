@@ -365,12 +365,29 @@ router.post('/media/upload', requireAuth, upload.array('files', 15), async (req,
         const filename = Date.now() + '_' + file.originalname;
 
         if (pool) {
+          const exist = await pool.query(
+            'SELECT * FROM media WHERE user_id = $1 AND (original_name = $2 OR filename = $2) AND size_bytes = $3',
+            [req.user.id, file.originalname, file.size]
+          );
+          if (exist.rows.length > 0) {
+            insertedMedia.push(exist.rows[0]);
+            continue;
+          }
+
           const q = await pool.query(
             'INSERT INTO media (user_id, filename, original_name, media_type, mime_type, size_bytes, caption, data_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
             [req.user.id, filename, file.originalname, mediaType, file.mimetype, file.size, caption, dataUrl]
           );
           insertedMedia.push(q.rows[0]);
         } else {
+          const exist = memStore.media.find(
+            m => m.user_id === req.user.id && (m.original_name === file.originalname || m.filename === file.originalname) && m.size_bytes === file.size
+          );
+          if (exist) {
+            insertedMedia.push(exist);
+            continue;
+          }
+
           const item = {
             id: Date.now() + Math.floor(Math.random() * 1000),
             user_id: req.user.id,
@@ -400,12 +417,27 @@ router.post('/media/upload', requireAuth, upload.array('files', 15), async (req,
     const filename = Date.now() + '_' + (original_name || 'vault_media');
 
     if (pool) {
+      const exist = await pool.query(
+        'SELECT * FROM media WHERE user_id = $1 AND (original_name = $2 OR filename = $2) AND size_bytes = $3',
+        [req.user.id, original_name || '', size_bytes || 0]
+      );
+      if (exist.rows.length > 0) {
+        return res.json({ message: 'Media already vaulted.', item: exist.rows[0], media: [exist.rows[0]] });
+      }
+
       const q = await pool.query(
         'INSERT INTO media (user_id, filename, original_name, media_type, mime_type, size_bytes, caption, data_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
         [req.user.id, filename, original_name || filename, media_type || 'photo', mime_type || 'image/jpeg', size_bytes || 0, caption || '', data_url || '']
       );
       return res.status(201).json({ message: 'Media saved in cloud vault.', item: q.rows[0], media: [q.rows[0]] });
     } else {
+      const exist = memStore.media.find(
+        m => m.user_id === req.user.id && (m.original_name === (original_name || filename)) && m.size_bytes === (size_bytes || 0)
+      );
+      if (exist) {
+        return res.json({ message: 'Media already vaulted.', item: exist, media: [exist] });
+      }
+
       const item = {
         id: Date.now() + Math.floor(Math.random() * 1000),
         user_id: req.user.id,
@@ -512,12 +544,27 @@ router.post('/diary', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Title and content required.' });
     }
     if (pool) {
+      const exist = await pool.query(
+        'SELECT * FROM diaries WHERE user_id = $1 AND title = $2 AND content = $3',
+        [req.user.id, title, content]
+      );
+      if (exist.rows.length > 0) {
+        return res.json({ message: 'Diary entry already vaulted.', entry: exist.rows[0] });
+      }
+
       const q = await pool.query(
         'INSERT INTO diaries (user_id, title, content, mood, image_url, weather) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
         [req.user.id, title, content, mood || 'Nostalgia', image_url || '', weather || 'Quiet']
       );
       return res.status(201).json({ message: 'Diary entry written to vault.', entry: q.rows[0] });
     } else {
+      const exist = memStore.diaries.find(
+        d => d.user_id === req.user.id && d.title === title && d.content === content
+      );
+      if (exist) {
+        return res.json({ message: 'Diary entry already vaulted.', entry: exist });
+      }
+
       const entry = {
         id: Date.now(),
         user_id: req.user.id,

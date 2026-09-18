@@ -72,31 +72,8 @@ export default function DiaryPage() {
 
   const fetchEntries = async () => {
     try {
-      let serverEntries = [];
-      try {
-        const res = await authFetch('/api/diary');
-        const data = await safeFetchJson(res);
-        if (res.ok && data && data.entries) {
-          serverEntries = data.entries;
-        }
-      } catch (e) {}
-
-      let localEntries = [];
-      try {
-        localEntries = await vaultEngine.getDiaries(token, user?.id || 'guest');
-      } catch (e) {}
-
-      // Combine server & local entries safely
-      const map = new Map();
-      serverEntries.forEach(item => map.set(String(item.id), item));
-      localEntries.forEach(item => {
-        if (!map.has(String(item.id))) {
-          map.set(String(item.id), item);
-        }
-      });
-
-      const list = Array.from(map.values());
-      list.sort((a, b) => new Date(b.created_at || b.entry_date) - new Date(a.created_at || a.entry_date));
+      setLoading(true);
+      const list = await vaultEngine.getDiaries(token, user?.id || 'guest');
       setEntries(list);
     } catch (err) {
       console.error('Failed to load diary', err);

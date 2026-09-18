@@ -31,47 +31,9 @@ export default function MediaVaultPage() {
 
   const fetchMedia = async () => {
     try {
-      let serverMedia = [];
-      try {
-        const res = await authFetch('/api/media');
-        const data = await safeFetchJson(res);
-        if (res.ok && data && data.media) {
-          serverMedia = data.media;
-        }
-      } catch (e) {}
+      setLoading(true);
+      const allItems = await vaultEngine.getVaultItems(token, user?.id || 'guest');
 
-      let localMedia = [];
-      try {
-        localMedia = await vaultEngine.getVaultItems(token, user?.id || 'guest');
-      } catch (e) {}
-
-      // Combine server & local items
-      const map = new Map();
-      serverMedia.forEach(item => {
-        const isVideo = isVideoMedia(item);
-        const mediaType = isVideo ? 'video' : 'photo';
-        map.set(String(item.id), {
-          ...item,
-          media_type: mediaType,
-          type: mediaType,
-          media_url: `/api/media/stream/${item.id}?token=${token}`
-        });
-      });
-
-      localMedia.forEach(item => {
-        const isVideo = isVideoMedia(item);
-        const mediaType = isVideo ? 'video' : 'photo';
-        if (!map.has(String(item.id))) {
-          map.set(String(item.id), {
-            ...item,
-            media_type: mediaType,
-            type: mediaType,
-            media_url: item.data_url || item.media_url || item.file_url
-          });
-        }
-      });
-
-      const allItems = Array.from(map.values());
       let pCount = 0;
       let vCount = 0;
       allItems.forEach(i => {
@@ -143,14 +105,10 @@ export default function MediaVaultPage() {
     }
 
     try {
-      await authFetch(`/api/media/${id}`, { method: 'DELETE' });
-    } catch (err) {}
-
-    try {
       await vaultEngine.deleteVaultItem(token, id, user?.id || 'guest');
     } catch (err) {}
 
-    setMediaList(mediaList.filter(item => item.id !== id));
+    await fetchMedia();
     if (selectedMedia?.id === id) {
       setSelectedMedia(null);
     }

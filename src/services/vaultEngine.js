@@ -179,6 +179,65 @@ export const isVideoMedia = (fileOrItem) => {
   const cleanName = name.split('?')[0].split('#')[0];
   return /\.(mp4|webm|mov|mkv|avi|m4v|3gp|3gpp|3g2|wmv|flv|ogv|ts|mts|m2ts|qt|asf|vob|divx)$/i.test(cleanName);
 };
+
+// Universal duplicate media detector to eliminate duplicate cards between server & local stores
+export const areDuplicateMedia = (a, b) => {
+  if (!a || !b) return false;
+
+  // 1. Same ID
+  if (a.id && b.id && String(a.id) === String(b.id)) return true;
+
+  // 2. Server ID cross match
+  if (a.server_id && b.server_id && String(a.server_id) === String(b.server_id)) return true;
+  if (a.server_id && b.id && String(a.server_id) === String(b.id)) return true;
+  if (b.server_id && a.id && String(b.server_id) === String(a.id)) return true;
+
+  // 3. Exact same data URL
+  if (a.data_url && b.data_url && a.data_url === b.data_url) return true;
+
+  // 4. Same original name and file size (essential for matching server uploads with local IDB items)
+  const nameA = (a.original_name || a.name || a.filename || '').toLowerCase();
+  const nameB = (b.original_name || b.name || b.filename || '').toLowerCase();
+  const sizeA = Number(a.size_bytes || a.file_size || 0);
+  const sizeB = Number(b.size_bytes || b.file_size || 0);
+
+  if (nameA && nameB && sizeA > 0 && sizeB > 0) {
+    if (nameA === nameB && Math.abs(sizeA - sizeB) < 10) return true;
+    if ((nameA.endsWith('_' + nameB) || nameB.endsWith('_' + nameA)) && Math.abs(sizeA - sizeB) < 10) return true;
+  }
+
+  // 5. Data URL prefix and size/caption match
+  if (a.data_url && b.data_url && a.data_url.length > 200 && b.data_url.length > 200) {
+    if (a.data_url.slice(0, 300) === b.data_url.slice(0, 300)) return true;
+  }
+
+  return false;
+};
+
+// Merges server and local items so we keep server ID for cloud sync and local data_url for instant display
+export const mergeMedia = (existing, incoming) => {
+  const isVideo = isVideoMedia(incoming) || isVideoMedia(existing);
+  const mediaType = isVideo ? 'video' : 'photo';
+
+  const serverId = (incoming.id && !String(incoming.id).startsWith('guest') && String(incoming.id).length < 12 ? incoming.id : null) ||
+                   (existing.id && !String(existing.id).startsWith('guest') && String(existing.id).length < 12 ? existing.id : null) ||
+                   incoming.server_id || existing.server_id || null;
+
+  const primaryId = serverId || incoming.id || existing.id;
+
+  return {
+    ...existing,
+    ...incoming,
+    id: primaryId,
+    server_id: serverId,
+    type: mediaType,
+    media_type: mediaType,
+    data_url: incoming.data_url || existing.data_url || '',
+    media_url: incoming.data_url || existing.data_url || incoming.media_url || existing.media_url,
+    original_name: (existing.original_name && !existing.original_name.includes('_') ? existing.original_name : incoming.original_name) || existing.original_name || incoming.original_name,
+    caption: incoming.caption || existing.caption || ''
+  };
+};
 // Cryptographic hash executed BEFORE any transaction
 async function hashPassword(str) {
   if (typeof window === 'undefined' || !window.crypto || !window.crypto.subtle) {
@@ -639,7 +698,23 @@ export const vaultEngine = {
 
   // ================= VAULT ITEMS (PHOTOS & VIDEOS) =================
   async getVaultItems(token, userId, search = '') {
-    const map = new Map();
+    const list = [];
+
+    const addOrMerge = (item) => {
+      const idx = list.findIndex(existing => areDuplicateMedia(existing, item));
+      if (idx >= 0) {
+        list[idx] = mergeMedia(list[idx], item);
+      } else {
+        const isVideo = isVideoMedia(item);
+        const mediaType = isVideo ? 'video' : 'photo';
+        list.push({
+          ...item,
+          type: mediaType,
+          media_type: mediaType,
+          media_url: item.data_url || item.media_url || item.file_url || (item.id ? `/api/media/stream/${item.id}?token=${token}` : '')
+        });
+      }
+    };
 
     // 1. Try server first
     try {
@@ -649,12 +724,8 @@ export const vaultEngine = {
       const data = await safeFetchJson(res);
       if (res.ok && data && (data.media || data.items)) {
         (data.media || data.items).forEach(item => {
-          const isVideo = isVideoMedia(item);
-          const mediaType = isVideo ? 'video' : 'photo';
-          map.set(String(item.id), {
+          addOrMerge({
             ...item,
-            type: mediaType,
-            media_type: mediaType,
             media_url: item.media_url || `/api/media/stream/${item.id}?token=${token}`
           });
         });
@@ -666,16 +737,7 @@ export const vaultEngine = {
       const idbItems = await getIDBStoreData('vault_items');
       idbItems.forEach(item => {
         if (matchesUser(item.user_id, userId)) {
-          if (!map.has(String(item.id))) {
-            const isVideo = isVideoMedia(item);
-            const mediaType = isVideo ? 'video' : 'photo';
-            map.set(String(item.id), {
-              ...item,
-              type: mediaType,
-              media_type: mediaType,
-              media_url: item.data_url || item.media_url || item.file_url
-            });
-          }
+          addOrMerge(item);
         }
       });
     } catch (e) {}
@@ -685,21 +747,12 @@ export const vaultEngine = {
       const localItems = getLocalData('vault_items', []);
       localItems.forEach(item => {
         if (matchesUser(item.user_id, userId)) {
-          if (!map.has(String(item.id))) {
-            const isVideo = isVideoMedia(item);
-            const mediaType = isVideo ? 'video' : 'photo';
-            map.set(String(item.id), {
-              ...item,
-              type: mediaType,
-              media_type: mediaType,
-              media_url: item.data_url || item.media_url || item.file_url
-            });
-          }
+          addOrMerge(item);
         }
       });
     } catch (e) {}
 
-    let items = Array.from(map.values());
+    let items = list;
 
     if (search) {
       const s = search.toLowerCase();
@@ -787,11 +840,27 @@ export const vaultEngine = {
         formData.append('tags', tags || '');
         formData.append('source', 'vault');
 
-        await fetch('/api/media/upload', {
+        const res = await fetch('/api/media/upload', {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
           body: formData
         });
+        const data = await safeFetchJson(res);
+        if (res.ok && data) {
+          const serverItem = (data.media && data.media[0]) || data.item;
+          if (serverItem && serverItem.id) {
+            localItem.server_id = serverItem.id;
+            try {
+              await putIDBStoreItem('vault_items', localItem);
+              const allItems = getLocalData('vault_items', []);
+              const idx = allItems.findIndex(i => String(i.id) === String(localItem.id));
+              if (idx !== -1) {
+                allItems[idx].server_id = serverItem.id;
+                setLocalData('vault_items', allItems);
+              }
+            } catch (e) {}
+          }
+        }
       } catch (e) {}
     }
 
@@ -799,6 +868,7 @@ export const vaultEngine = {
   },
 
   async deleteVaultItem(token, id, userId) {
+    // 1. Delete on server
     try {
       await fetch(`/api/media/${id}`, {
         method: 'DELETE',
@@ -806,28 +876,64 @@ export const vaultEngine = {
       });
     } catch (e) {}
 
+    // 2. Find matching item to delete completely from IDB and LocalStorage
     try {
-      await deleteIDBStoreItem('vault_items', Number(id) || id);
+      const idbItems = await getIDBStoreData('vault_items');
+      const target = idbItems.find(i => String(i.id) === String(id) || String(i.server_id) === String(id));
+      for (const item of idbItems) {
+        if (String(item.id) === String(id) || String(item.server_id) === String(id) || (target && areDuplicateMedia(item, target))) {
+          await deleteIDBStoreItem('vault_items', item.id);
+        }
+      }
     } catch (e) {}
 
-    const allItems = getLocalData('vault_items', []).filter(i => String(i.id) !== String(id));
-    setLocalData('vault_items', allItems);
+    try {
+      const allItems = getLocalData('vault_items', []);
+      const target = allItems.find(i => String(i.id) === String(id) || String(i.server_id) === String(id));
+      const filtered = allItems.filter(i => {
+        if (String(i.id) === String(id) || String(i.server_id) === String(id)) return false;
+        if (target && areDuplicateMedia(i, target)) return false;
+        return true;
+      });
+      setLocalData('vault_items', filtered);
+    } catch (e) {}
 
     return true;
   },
 
   // ================= TRAGIC DIARY =================
   async getDiaries(token, userId, search = '') {
-    const map = new Map();
+    const list = [];
+
+    const addOrMerge = (entry) => {
+      const idx = list.findIndex(existing =>
+        String(existing.id) === String(entry.id) ||
+        (existing.server_id && entry.server_id && String(existing.server_id) === String(entry.server_id)) ||
+        (existing.server_id && entry.id && String(existing.server_id) === String(entry.id)) ||
+        (existing.id && entry.server_id && String(existing.id) === String(entry.server_id)) ||
+        (existing.title === entry.title && existing.content === entry.content)
+      );
+      if (idx >= 0) {
+        const serverId = entry.server_id || existing.server_id || (!String(entry.id).startsWith('guest') && String(entry.id).length < 12 ? entry.id : null);
+        list[idx] = {
+          ...list[idx],
+          ...entry,
+          id: serverId || list[idx].id || entry.id,
+          server_id: serverId
+        };
+      } else {
+        list.push(entry);
+      }
+    };
 
     // 1. Try server first
     try {
-      const res = await fetch(`/api/diary?search=${encodeURIComponent(search)}`, {
+      const res = await fetch(`/api/diary${search ? `?search=${encodeURIComponent(search)}` : ''}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await safeFetchJson(res);
       if (res.ok && data && data.entries) {
-        data.entries.forEach(entry => map.set(String(entry.id), entry));
+        data.entries.forEach(entry => addOrMerge(entry));
       }
     } catch (e) {}
 
@@ -836,9 +942,7 @@ export const vaultEngine = {
       const idbDiaries = await getIDBStoreData('diary_entries');
       idbDiaries.forEach(entry => {
         if (matchesUser(entry.user_id, userId)) {
-          if (!map.has(String(entry.id))) {
-            map.set(String(entry.id), entry);
-          }
+          addOrMerge(entry);
         }
       });
     } catch (e) {}
@@ -848,25 +952,23 @@ export const vaultEngine = {
       const localDiaries = getLocalData('diary_entries', []);
       localDiaries.forEach(entry => {
         if (matchesUser(entry.user_id, userId)) {
-          if (!map.has(String(entry.id))) {
-            map.set(String(entry.id), entry);
-          }
+          addOrMerge(entry);
         }
       });
     } catch (e) {}
 
-    let list = Array.from(map.values());
+    let filtered = list;
 
     if (search) {
       const s = search.toLowerCase();
-      list = list.filter(
+      filtered = filtered.filter(
         d => (d.title && d.title.toLowerCase().includes(s)) ||
              (d.content && d.content.toLowerCase().includes(s))
       );
     }
 
-    list.sort((a, b) => new Date(b.created_at || b.entry_date) - new Date(a.created_at || a.entry_date));
-    return list;
+    filtered.sort((a, b) => new Date(b.created_at || b.entry_date) - new Date(a.created_at || a.entry_date));
+    return filtered;
   },
 
   async saveDiary(token, userId, diaryData, existingId = null) {
@@ -908,7 +1010,7 @@ export const vaultEngine = {
       try {
         const url = existingId ? `/api/diary/${existingId}` : '/api/diary';
         const method = existingId ? 'PUT' : 'POST';
-        await fetch(url, {
+        const res = await fetch(url, {
           method,
           headers: {
             'Content-Type': 'application/json',
@@ -916,6 +1018,13 @@ export const vaultEngine = {
           },
           body: JSON.stringify(diaryData)
         });
+        const data = await safeFetchJson(res);
+        if (res.ok && data && data.entry) {
+          entryRecord.server_id = data.entry.id;
+          try {
+            await putIDBStoreItem('diary_entries', entryRecord);
+          } catch (e) {}
+        }
       } catch (e) {}
     }
 
@@ -932,9 +1041,15 @@ export const vaultEngine = {
 
     try {
       await deleteIDBStoreItem('diary_entries', Number(id) || id);
+      const allDiariesIDB = await getIDBStoreData('diary_entries');
+      for (const d of allDiariesIDB) {
+        if (String(d.id) === String(id) || String(d.server_id) === String(id)) {
+          await deleteIDBStoreItem('diary_entries', d.id);
+        }
+      }
     } catch (e) {}
 
-    const allDiaries = getLocalData('diary_entries', []).filter(d => String(d.id) !== String(id));
+    const allDiaries = getLocalData('diary_entries', []).filter(d => String(d.id) !== String(id) && String(d.server_id) !== String(id));
     setLocalData('diary_entries', allDiaries);
 
     return true;
@@ -954,9 +1069,9 @@ export const vaultEngine = {
       }
 
       for (const item of allMedia) {
-        if (matchesUser(item.user_id, userId) && item.data_url) {
+        if (matchesUser(item.user_id, userId) && item.data_url && !item.server_id) {
           try {
-            await fetch('/api/media/upload', {
+            const res = await fetch('/api/media/upload', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -971,6 +1086,14 @@ export const vaultEngine = {
                 data_url: item.data_url
               })
             });
+            const data = await safeFetchJson(res);
+            if (res.ok && data) {
+              const serverItem = (data.media && data.media[0]) || data.item;
+              if (serverItem && serverItem.id) {
+                item.server_id = serverItem.id;
+                await putIDBStoreItem('vault_items', item);
+              }
+            }
           } catch (e) {}
         }
       }
@@ -986,9 +1109,9 @@ export const vaultEngine = {
       }
 
       for (const entry of allDiaries) {
-        if (matchesUser(entry.user_id, userId)) {
+        if (matchesUser(entry.user_id, userId) && !entry.server_id) {
           try {
-            await fetch('/api/diary', {
+            const res = await fetch('/api/diary', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -1002,6 +1125,11 @@ export const vaultEngine = {
                 weather: entry.weather
               })
             });
+            const data = await safeFetchJson(res);
+            if (res.ok && data && data.entry) {
+              entry.server_id = data.entry.id;
+              await putIDBStoreItem('diary_entries', entry);
+            }
           } catch (e) {}
         }
       }
