@@ -392,6 +392,110 @@ export const vaultEngine = {
     return { token, user: guestUser };
   },
 
+  // ================= DEVICE SYNC & VAULT PACKAGE =================
+  async exportVaultPackage(token, userId) {
+    const items = await this.getVaultItems(token, userId);
+    const diaries = await this.getDiaries(token, userId);
+    const capsules = await this.getCapsules(token, userId);
+    const localUsers = getLocalData('users', []);
+    const currentUser = localUsers.find(u => matchesUser(u.id, userId)) || 
+      (typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('vault_user') || 'null') : null);
+
+    return {
+      vault_version: '2.0',
+      exported_at: new Date().toISOString(),
+      user: currentUser,
+      items,
+      diaries,
+      capsules
+    };
+  },
+
+  async importVaultPackage(pkg) {
+    if (!pkg || typeof pkg !== 'object') {
+      throw new Error('Invalid vault package data.');
+    }
+
+    // 1. Restore User
+    let user = pkg.user;
+    if (user) {
+      const localUsers = getLocalData('users', []);
+      const existingIdx = localUsers.findIndex(u => matchesUser(u.id, user.id) || u.email === user.email);
+      if (existingIdx >= 0) {
+        localUsers[existingIdx] = { ...localUsers[existingIdx], ...user };
+      } else {
+        localUsers.push(user);
+      }
+      setLocalData('users', localUsers);
+      await putIDBStoreItem('users', user);
+    } else {
+      user = {
+        id: 'user_' + Date.now(),
+        name: 'Honored Keeper',
+        email: 'vault@memoryvault.app',
+        created_at: new Date().toISOString()
+      };
+    }
+
+    // 2. Restore Vault Items (Photos & Videos)
+    const items = Array.isArray(pkg.items) ? pkg.items : [];
+    const localItems = getLocalData('vault_items', []);
+    for (const item of items) {
+      const existingIdx = localItems.findIndex(i => String(i.id) === String(item.id));
+      const restoredItem = { ...item, user_id: user.id };
+      if (existingIdx >= 0) {
+        localItems[existingIdx] = restoredItem;
+      } else {
+        localItems.unshift(restoredItem);
+      }
+      await putIDBStoreItem('vault_items', restoredItem);
+    }
+    setLocalData('vault_items', localItems);
+
+    // 3. Restore Diaries
+    const diaries = Array.isArray(pkg.diaries) ? pkg.diaries : [];
+    const localDiaries = getLocalData('diary_entries', []);
+    for (const d of diaries) {
+      const existingIdx = localDiaries.findIndex(i => String(i.id) === String(d.id));
+      const restoredDiary = { ...d, user_id: user.id };
+      if (existingIdx >= 0) {
+        localDiaries[existingIdx] = restoredDiary;
+      } else {
+        localDiaries.unshift(restoredDiary);
+      }
+      await putIDBStoreItem('diary_entries', restoredDiary);
+    }
+    setLocalData('diary_entries', localDiaries);
+
+    // 4. Restore Capsules
+    const capsules = Array.isArray(pkg.capsules) ? pkg.capsules : [];
+    const localCapsules = getLocalData('capsules', []);
+    for (const c of capsules) {
+      const existingIdx = localCapsules.findIndex(i => String(i.id) === String(c.id));
+      const restoredCap = { ...c, user_id: user.id };
+      if (existingIdx >= 0) {
+        localCapsules[existingIdx] = restoredCap;
+      } else {
+        localCapsules.unshift(restoredCap);
+      }
+    }
+    setLocalData('capsules', localCapsules);
+
+    // 5. Generate authenticated token and safe user
+    const safeUser = { ...user };
+    delete safeUser.password_hash;
+    const token = 'vault_session_' + btoa(JSON.stringify(safeUser));
+
+    return {
+      success: true,
+      token,
+      user: safeUser,
+      itemCount: items.length,
+      diaryCount: diaries.length,
+      capsuleCount: capsules.length
+    };
+  },
+
   // ================= PROFILE & STATS =================
   async getProfile(token, userId) {
     let serverData = null;

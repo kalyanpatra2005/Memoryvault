@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { vaultEngine, safeFetchJson } from '../services/vaultEngine';
+import SyncModal from '../components/SyncModal';
 import { 
   ShieldCheck, Lock, Download, User, Mail, Phone, Calendar, 
-  KeyRound, CheckCircle, Database, LogOut, HardDrive, HeartHandshake, FileText
+  KeyRound, CheckCircle, Database, LogOut, HardDrive, HeartHandshake, FileText, Smartphone, Laptop, RefreshCw
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -11,6 +12,8 @@ export default function SettingsPage() {
   const [exporting, setExporting] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportMsg, setExportMsg] = useState('');
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncModalTab, setSyncModalTab] = useState('send');
 
   // Export JSON Archive
   const handleExportData = async () => {
@@ -429,6 +432,52 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* MOBILE ↔ LAPTOP VAULT SYNC CARD */}
+        <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-stone-900 via-amber-950/20 to-stone-900 border border-amber-500/40 shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 transform translate-x-4 -translate-y-4 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+          
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-amber-950 border border-amber-600/50 flex items-center justify-center text-amber-300">
+              <RefreshCw className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h2 className="text-xl font-bold font-antique text-stone-100">Mobile ↔ Laptop Vault Sync</h2>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">FAST SYNC</span>
+              </div>
+              <p className="text-xs text-stone-400">Transfer your memories and account between phone and laptop</p>
+            </div>
+          </div>
+
+          <p className="text-xs sm:text-sm text-stone-300 font-serif leading-relaxed mb-6">
+            Uploaded photos and diaries on your phone? Since Memory Vault preserves 100% offline privacy, your files live securely inside your device browser. Use this tool to instantly export your vault from your phone and import it onto your laptop.
+          </p>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => {
+                setSyncModalTab('send');
+                setSyncModalOpen(true);
+              }}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-stone-950 font-bold text-xs flex items-center space-x-2 shadow-lg shadow-amber-900/40 transition cursor-pointer"
+            >
+              <Smartphone className="w-4 h-4" />
+              <span>Send / Export from this Device</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setSyncModalTab('receive');
+                setSyncModalOpen(true);
+              }}
+              className="px-5 py-2.5 rounded-xl bg-stone-950 hover:bg-stone-900 text-amber-200 border border-amber-800/60 text-xs font-semibold flex items-center space-x-2 transition cursor-pointer"
+            >
+              <Laptop className="w-4 h-4 text-amber-400" />
+              <span>Receive / Import on this Device</span>
+            </button>
+          </div>
+        </div>
+
         {/* DATA EXPORT CARD */}
         <div className="p-6 sm:p-8 rounded-3xl bg-stone-900 border border-stone-800 shadow-xl">
           <h2 className="text-xl font-bold font-antique text-stone-100 mb-2 flex items-center space-x-2">
@@ -482,6 +531,16 @@ export default function SettingsPage() {
         </div>
 
       </div>
+
+      {/* Device Sync Modal */}
+      <SyncModal
+        isOpen={syncModalOpen}
+        onClose={() => setSyncModalOpen(false)}
+        initialTab={syncModalTab}
+        onSyncSuccess={() => {
+          setExportMsg('Vault successfully synchronized across devices!');
+        }}
+      />
 
     </div>
   );
