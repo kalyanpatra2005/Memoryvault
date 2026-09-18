@@ -7,6 +7,8 @@ const { Pool } = require('pg');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'vault_secret_eternal_key_2026';
 
+const FALLBACK_CLOUD_DB = 'postgresql://neondb_owner:npg_o5FQYERByN1t@ep-rapid-grass-b4mn4kxc-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require';
+
 let pool = null;
 function getPool() {
   const conn = 
@@ -15,14 +17,21 @@ function getPool() {
     process.env.POSTGRES_PRISMA_URL || 
     process.env.POSTGRES_URL_NON_POOLING ||
     process.env.SUPABASE_DATABASE_URL ||
-    process.env.NEON_DATABASE_URL;
+    process.env.NEON_DATABASE_URL ||
+    FALLBACK_CLOUD_DB;
   if (!pool && conn) {
     try {
       pool = new Pool({
         connectionString: conn,
-        ssl: { rejectUnauthorized: false }
+        ssl: { rejectUnauthorized: false },
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000
       });
-      console.log('✓ PostgreSQL pool connected.');
+      pool.on('error', (err) => {
+        console.error('Unexpected error on idle PostgreSQL client:', err ? err.message : err);
+      });
+      console.log('✓ PostgreSQL pool connected to cloud database.');
     } catch (e) {
       console.error('Failed to create PostgreSQL pool:', e);
     }
@@ -59,6 +68,7 @@ async function initDb() {
       CREATE TABLE IF NOT EXISTS diaries (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
+        user_email TEXT,
         title TEXT NOT NULL,
         content TEXT NOT NULL,
         mood TEXT DEFAULT 'Nostalgia',
@@ -71,6 +81,7 @@ async function initDb() {
       CREATE TABLE IF NOT EXISTS media (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
+        user_email TEXT,
         filename TEXT NOT NULL,
         original_name TEXT NOT NULL,
         media_type TEXT NOT NULL,
@@ -84,6 +95,7 @@ async function initDb() {
       CREATE TABLE IF NOT EXISTS capsules (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
+        user_email TEXT,
         title TEXT NOT NULL,
         message TEXT NOT NULL,
         media_urls TEXT,
@@ -91,9 +103,13 @@ async function initDb() {
         is_opened INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      ALTER TABLE media ADD COLUMN IF NOT EXISTS user_email TEXT;
+      ALTER TABLE diaries ADD COLUMN IF NOT EXISTS user_email TEXT;
+      ALTER TABLE capsules ADD COLUMN IF NOT EXISTS user_email TEXT;
     `);
     tablesInitialized = true;
-    console.log('✓ Cloud Database tables ready.');
+    console.log('✓ Cloud Database tables ready with user_email support.');
   } catch (err) {
     console.error('Database initialization error:', err);
   }
@@ -191,30 +207,55 @@ router.post('/auth/register', async (req, res) => {
     const cleanName = name.trim();
     const hash = bcrypt.hashSync(password, 10);
 
-    if (pool) {
+    const activePool = getPool();
+    if (activePool) {
       // Check existing email
-      const exist = await pool.query('SELECT id, phone FROM users WHERE LOWER(email) = $1', [cleanEmail]);
+      const exist = await activePool.query('SELECT * FROM users WHERE LOWER(email) = $1', [cleanEmail]);
       if (exist.rows.length > 0) {
-        return res.status(400).json({ error: 'An account with this email already exists.' });
+        const existUser = exist.rows[0];
+        const valid = bcrypt.compareSync(password, existUser.password_hash);
+        if (valid) {
+          const safe = {
+            id: existUser.id,
+            name: existUser.name,
+            email: existUser.email,
+            phone: existUser.phone,
+            dob: existUser.dob,
+            created_at: existUser.created_at
+          };
+          const token = jwt.sign({ id: safe.id, email: safe.email, name: safe.name }, JWT_SECRET, { expiresIn: '30d' });
+          return res.json({ message: 'Welcome back! Vault unlocked.', token, user: safe });
+        }
+        return res.status(400).json({ error: 'An account with this email already exists. Please log in with your master password.' });
       }
+
       // Check existing phone
-      const allUsers = await pool.query('SELECT id, phone FROM users');
+      const allUsers = await activePool.query('SELECT id, phone FROM users');
       const phoneExist = allUsers.rows.find(u => phonesMatch(u.phone, cleanPhone));
       if (phoneExist) {
         return res.status(400).json({ error: 'An account with this phone number already exists.' });
       }
 
-      const insert = await pool.query(
+      const insert = await activePool.query(
         'INSERT INTO users (name, email, phone, dob, password_hash) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email, phone, dob, created_at',
         [cleanName, cleanEmail, cleanPhone, dob, hash]
       );
       const user = insert.rows[0];
-      const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+      const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' });
       return res.status(201).json({ message: 'Vault created in Cloud Database.', token, user });
     } else {
       // MemStore fallback
       const exist = memStore.users.find(u => u.email.toLowerCase() === cleanEmail || phonesMatch(u.phone, cleanPhone));
-      if (exist) return res.status(400).json({ error: 'An account with this email already exists.' });
+      if (exist) {
+        const valid = bcrypt.compareSync(password, exist.password_hash);
+        if (valid) {
+          const safe = { ...exist };
+          delete safe.password_hash;
+          const token = jwt.sign({ id: safe.id, email: safe.email, name: safe.name }, JWT_SECRET, { expiresIn: '30d' });
+          return res.json({ message: 'Welcome back! Vault unlocked.', token, user: safe });
+        }
+        return res.status(400).json({ error: 'An account with this email already exists. Please log in with your master password.' });
+      }
       const user = {
         id: Date.now(),
         name: cleanName,
@@ -227,7 +268,7 @@ router.post('/auth/register', async (req, res) => {
       memStore.users.push(user);
       const safe = { ...user };
       delete safe.password_hash;
-      const token = jwt.sign({ id: safe.id, email: safe.email }, JWT_SECRET, { expiresIn: '30d' });
+      const token = jwt.sign({ id: safe.id, email: safe.email, name: safe.name }, JWT_SECRET, { expiresIn: '30d' });
       return res.status(201).json({ message: 'Vault created.', token, user: safe });
     }
   } catch (err) {
@@ -243,10 +284,15 @@ router.post('/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Email/Phone and Password are required.' });
     }
     const cleanId = identifier.trim().toLowerCase();
+    const activePool = getPool();
 
-    if (pool) {
-      const all = await pool.query('SELECT * FROM users');
-      const user = all.rows.find(u => u.email.toLowerCase() === cleanId || phonesMatch(u.phone, identifier));
+    if (activePool) {
+      const q = await activePool.query('SELECT * FROM users WHERE LOWER(email) = $1 OR phone = $2', [cleanId, identifier.trim()]);
+      let user = q.rows[0];
+      if (!user) {
+        const all = await activePool.query('SELECT * FROM users');
+        user = all.rows.find(u => u.email.toLowerCase() === cleanId || phonesMatch(u.phone, identifier));
+      }
       if (!user) {
         return res.status(401).json({ error: 'No account found with this email or phone number.' });
       }
@@ -262,7 +308,7 @@ router.post('/auth/login', async (req, res) => {
         dob: user.dob,
         created_at: user.created_at
       };
-      const token = jwt.sign({ id: safe.id, email: safe.email }, JWT_SECRET, { expiresIn: '30d' });
+      const token = jwt.sign({ id: safe.id, email: safe.email, name: safe.name }, JWT_SECRET, { expiresIn: '30d' });
       return res.json({ message: 'Vault unlocked.', token, user: safe });
     } else {
       const user = memStore.users.find(u => u.email.toLowerCase() === cleanId || phonesMatch(u.phone, identifier));
@@ -275,7 +321,7 @@ router.post('/auth/login', async (req, res) => {
       }
       const safe = { ...user };
       delete safe.password_hash;
-      const token = jwt.sign({ id: safe.id, email: safe.email }, JWT_SECRET, { expiresIn: '30d' });
+      const token = jwt.sign({ id: safe.id, email: safe.email, name: safe.name }, JWT_SECRET, { expiresIn: '30d' });
       return res.json({ message: 'Vault unlocked.', token, user: safe });
     }
   } catch (err) {
@@ -292,17 +338,18 @@ router.post('/auth/reset-password', async (req, res) => {
     }
     const cleanId = identifier.trim().toLowerCase();
     const newHash = bcrypt.hashSync(newPassword, 10);
+    const activePool = getPool();
 
-    if (pool) {
-      const all = await pool.query('SELECT * FROM users');
+    if (activePool) {
+      const all = await activePool.query('SELECT * FROM users');
       const user = all.rows.find(u => u.email.toLowerCase() === cleanId || phonesMatch(u.phone, identifier));
       if (!user) return res.status(404).json({ error: 'No account found with this email or phone number.' });
       if (user.dob && user.dob.trim() !== dob.trim()) {
         return res.status(401).json({ error: 'Date of Birth does not match account records.' });
       }
-      await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, user.id]);
+      await activePool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, user.id]);
       const safe = { id: user.id, name: user.name, email: user.email, phone: user.phone, dob: user.dob };
-      const token = jwt.sign({ id: safe.id, email: safe.email }, JWT_SECRET, { expiresIn: '30d' });
+      const token = jwt.sign({ id: safe.id, email: safe.email, name: safe.name }, JWT_SECRET, { expiresIn: '30d' });
       return res.json({ message: 'Password reset successfully.', token, user: safe });
     } else {
       const user = memStore.users.find(u => u.email.toLowerCase() === cleanId || phonesMatch(u.phone, identifier));
@@ -313,7 +360,7 @@ router.post('/auth/reset-password', async (req, res) => {
       user.password_hash = newHash;
       const safe = { ...user };
       delete safe.password_hash;
-      const token = jwt.sign({ id: safe.id, email: safe.email }, JWT_SECRET, { expiresIn: '30d' });
+      const token = jwt.sign({ id: safe.id, email: safe.email, name: safe.name }, JWT_SECRET, { expiresIn: '30d' });
       return res.json({ message: 'Password reset successfully.', token, user: safe });
     }
   } catch (err) {
@@ -324,12 +371,16 @@ router.post('/auth/reset-password', async (req, res) => {
 router.get('/auth/me', requireAuth, async (req, res) => {
   try {
     const activePool = getPool();
+    const userEmail = (req.user.email || '').trim().toLowerCase();
     if (activePool) {
-      const q = await activePool.query('SELECT id, name, email, phone, dob, created_at FROM users WHERE id = $1', [req.user.id]);
+      const q = await activePool.query(
+        'SELECT id, name, email, phone, dob, created_at FROM users WHERE id = $1 OR (email IS NOT NULL AND LOWER(email) = $2)',
+        [req.user.id || 0, userEmail]
+      );
       if (q.rows.length > 0) return res.json({ user: q.rows[0] });
     }
     
-    let user = memStore.users.find(u => u.id === req.user.id);
+    let user = memStore.users.find(u => u.id === req.user.id || (u.email && u.email.toLowerCase() === userEmail));
     if (!user) {
       user = {
         id: req.user.id,
@@ -351,12 +402,19 @@ router.get('/auth/me', requireAuth, async (req, res) => {
 // ================= MEDIA (PHOTOS & VIDEOS) =================
 router.get('/media', requireAuth, async (req, res) => {
   try {
+    const activePool = getPool();
+    const userId = Number(req.user.id) || 0;
+    const userEmail = (req.user.email || '').trim().toLowerCase();
     let rows = [];
-    if (pool) {
-      const q = await pool.query('SELECT * FROM media WHERE user_id = $1 ORDER BY created_at DESC', [req.user.id]);
+
+    if (activePool) {
+      const q = await activePool.query(
+        'SELECT * FROM media WHERE (user_id = $1 OR (user_email IS NOT NULL AND LOWER(user_email) = $2)) ORDER BY created_at DESC',
+        [userId, userEmail]
+      );
       rows = q.rows;
     } else {
-      rows = memStore.media.filter(m => m.user_id === req.user.id);
+      rows = memStore.media.filter(m => m.user_id === req.user.id || (m.user_email && m.user_email.toLowerCase() === userEmail));
     }
 
     const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : '';
@@ -374,6 +432,9 @@ router.get('/media', requireAuth, async (req, res) => {
 // Upload media: Supports multipart FormData ('files') and JSON ({ data_url })
 router.post('/media/upload', requireAuth, upload.array('files', 15), async (req, res) => {
   try {
+    const activePool = getPool();
+    const userId = Number(req.user.id) || 0;
+    const userEmail = (req.user.email || '').trim().toLowerCase();
     const insertedMedia = [];
 
     // 1. If uploaded via multipart FormData with files
@@ -385,24 +446,26 @@ router.post('/media/upload', requireAuth, upload.array('files', 15), async (req,
         const dataUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
         const filename = Date.now() + '_' + file.originalname;
 
-        if (pool) {
-          const exist = await pool.query(
-            'SELECT * FROM media WHERE user_id = $1 AND (original_name = $2 OR filename = $2) AND size_bytes = $3',
-            [req.user.id, file.originalname, file.size]
+        if (activePool) {
+          const exist = await activePool.query(
+            'SELECT * FROM media WHERE (user_id = $1 OR (user_email IS NOT NULL AND LOWER(user_email) = $2)) AND (original_name = $3 OR filename = $3) AND size_bytes = $4',
+            [userId, userEmail, file.originalname, file.size]
           );
           if (exist.rows.length > 0) {
             insertedMedia.push(exist.rows[0]);
             continue;
           }
 
-          const q = await pool.query(
-            'INSERT INTO media (user_id, filename, original_name, media_type, mime_type, size_bytes, caption, data_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-            [req.user.id, filename, file.originalname, mediaType, file.mimetype, file.size, caption, dataUrl]
+          const q = await activePool.query(
+            'INSERT INTO media (user_id, user_email, filename, original_name, media_type, mime_type, size_bytes, caption, data_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+            [userId, userEmail, filename, file.originalname, mediaType, file.mimetype, file.size, caption, dataUrl]
           );
           insertedMedia.push(q.rows[0]);
         } else {
           const exist = memStore.media.find(
-            m => m.user_id === req.user.id && (m.original_name === file.originalname || m.filename === file.originalname) && m.size_bytes === file.size
+            m => (m.user_id === req.user.id || (m.user_email && m.user_email.toLowerCase() === userEmail)) &&
+                 (m.original_name === file.originalname || m.filename === file.originalname) &&
+                 m.size_bytes === file.size
           );
           if (exist) {
             insertedMedia.push(exist);
@@ -412,6 +475,7 @@ router.post('/media/upload', requireAuth, upload.array('files', 15), async (req,
           const item = {
             id: Date.now() + Math.floor(Math.random() * 1000),
             user_id: req.user.id,
+            user_email: userEmail,
             filename,
             original_name: file.originalname,
             media_type: mediaType,
@@ -437,23 +501,25 @@ router.post('/media/upload', requireAuth, upload.array('files', 15), async (req,
     const { original_name, media_type, mime_type, size_bytes, caption, data_url } = req.body;
     const filename = Date.now() + '_' + (original_name || 'vault_media');
 
-    if (pool) {
-      const exist = await pool.query(
-        'SELECT * FROM media WHERE user_id = $1 AND (original_name = $2 OR filename = $2) AND size_bytes = $3',
-        [req.user.id, original_name || '', size_bytes || 0]
+    if (activePool) {
+      const exist = await activePool.query(
+        'SELECT * FROM media WHERE (user_id = $1 OR (user_email IS NOT NULL AND LOWER(user_email) = $2)) AND (original_name = $3 OR filename = $3) AND size_bytes = $4',
+        [userId, userEmail, original_name || '', size_bytes || 0]
       );
       if (exist.rows.length > 0) {
         return res.json({ message: 'Media already vaulted.', item: exist.rows[0], media: [exist.rows[0]] });
       }
 
-      const q = await pool.query(
-        'INSERT INTO media (user_id, filename, original_name, media_type, mime_type, size_bytes, caption, data_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-        [req.user.id, filename, original_name || filename, media_type || 'photo', mime_type || 'image/jpeg', size_bytes || 0, caption || '', data_url || '']
+      const q = await activePool.query(
+        'INSERT INTO media (user_id, user_email, filename, original_name, media_type, mime_type, size_bytes, caption, data_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+        [userId, userEmail, filename, original_name || filename, media_type || 'photo', mime_type || 'image/jpeg', size_bytes || 0, caption || '', data_url || '']
       );
       return res.status(201).json({ message: 'Media saved in cloud vault.', item: q.rows[0], media: [q.rows[0]] });
     } else {
       const exist = memStore.media.find(
-        m => m.user_id === req.user.id && (m.original_name === (original_name || filename)) && m.size_bytes === (size_bytes || 0)
+        m => (m.user_id === req.user.id || (m.user_email && m.user_email.toLowerCase() === userEmail)) &&
+             (m.original_name === (original_name || filename)) &&
+             m.size_bytes === (size_bytes || 0)
       );
       if (exist) {
         return res.json({ message: 'Media already vaulted.', item: exist, media: [exist] });
@@ -462,6 +528,7 @@ router.post('/media/upload', requireAuth, upload.array('files', 15), async (req,
       const item = {
         id: Date.now() + Math.floor(Math.random() * 1000),
         user_id: req.user.id,
+        user_email: userEmail,
         filename,
         original_name: original_name || filename,
         media_type: media_type || 'photo',
@@ -498,16 +565,21 @@ router.get('/media/stream/:id', async (req, res) => {
       return res.status(401).send('Invalid session token');
     }
 
+    const activePool = getPool();
     let item = null;
-    if (pool) {
-      const q = await pool.query('SELECT * FROM media WHERE id = $1', [req.params.id]);
+    if (activePool) {
+      const q = await activePool.query('SELECT * FROM media WHERE id = $1', [req.params.id]);
       item = q.rows[0];
     } else {
       item = memStore.media.find(m => m.id == req.params.id);
     }
 
     if (!item) return res.status(404).send('Media not found');
-    if (item.user_id !== user.id) return res.status(403).send('Forbidden: Not your memory');
+    const matchesUserOwner = 
+      item.user_id === user.id || 
+      (item.user_email && user.email && item.user_email.toLowerCase() === user.email.toLowerCase());
+
+    if (!matchesUserOwner) return res.status(403).send('Forbidden: Not your memory');
 
     if (item.data_url && item.data_url.startsWith('data:')) {
       const matches = item.data_url.match(/^data:([^;]+);base64,(.+)$/);
@@ -532,10 +604,19 @@ router.get('/media/stream/:id', async (req, res) => {
 
 router.delete('/media/:id', requireAuth, async (req, res) => {
   try {
-    if (pool) {
-      await pool.query('DELETE FROM media WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    const activePool = getPool();
+    const userId = Number(req.user.id) || 0;
+    const userEmail = (req.user.email || '').trim().toLowerCase();
+
+    if (activePool) {
+      await activePool.query(
+        'DELETE FROM media WHERE id = $1 AND (user_id = $2 OR (user_email IS NOT NULL AND LOWER(user_email) = $3))',
+        [req.params.id, userId, userEmail]
+      );
     } else {
-      memStore.media = memStore.media.filter(m => !(m.id == req.params.id && m.user_id === req.user.id));
+      memStore.media = memStore.media.filter(
+        m => !(m.id == req.params.id && (m.user_id === req.user.id || (m.user_email && m.user_email.toLowerCase() === userEmail)))
+      );
     }
     return res.json({ message: 'Media deleted.' });
   } catch (err) {
@@ -546,11 +627,20 @@ router.delete('/media/:id', requireAuth, async (req, res) => {
 // ================= DIARIES =================
 router.get('/diary', requireAuth, async (req, res) => {
   try {
-    if (pool) {
-      const q = await pool.query('SELECT * FROM diaries WHERE user_id = $1 ORDER BY created_at DESC', [req.user.id]);
+    const activePool = getPool();
+    const userId = Number(req.user.id) || 0;
+    const userEmail = (req.user.email || '').trim().toLowerCase();
+
+    if (activePool) {
+      const q = await activePool.query(
+        'SELECT * FROM diaries WHERE (user_id = $1 OR (user_email IS NOT NULL AND LOWER(user_email) = $2)) ORDER BY created_at DESC',
+        [userId, userEmail]
+      );
       return res.json({ entries: q.rows });
     } else {
-      const entries = memStore.diaries.filter(d => d.user_id === req.user.id);
+      const entries = memStore.diaries.filter(
+        d => d.user_id === req.user.id || (d.user_email && d.user_email.toLowerCase() === userEmail)
+      );
       return res.json({ entries });
     }
   } catch (err) {
@@ -564,23 +654,28 @@ router.post('/diary', requireAuth, async (req, res) => {
     if (!title || !content) {
       return res.status(400).json({ error: 'Title and content required.' });
     }
-    if (pool) {
-      const exist = await pool.query(
-        'SELECT * FROM diaries WHERE user_id = $1 AND title = $2 AND content = $3',
-        [req.user.id, title, content]
+    const activePool = getPool();
+    const userId = Number(req.user.id) || 0;
+    const userEmail = (req.user.email || '').trim().toLowerCase();
+
+    if (activePool) {
+      const exist = await activePool.query(
+        'SELECT * FROM diaries WHERE (user_id = $1 OR (user_email IS NOT NULL AND LOWER(user_email) = $2)) AND title = $3 AND content = $4',
+        [userId, userEmail, title, content]
       );
       if (exist.rows.length > 0) {
         return res.json({ message: 'Diary entry already vaulted.', entry: exist.rows[0] });
       }
 
-      const q = await pool.query(
-        'INSERT INTO diaries (user_id, title, content, mood, image_url, weather) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-        [req.user.id, title, content, mood || 'Nostalgia', image_url || '', weather || 'Quiet']
+      const q = await activePool.query(
+        'INSERT INTO diaries (user_id, user_email, title, content, mood, image_url, weather) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+        [userId, userEmail, title, content, mood || 'Nostalgia', image_url || '', weather || 'Quiet']
       );
       return res.status(201).json({ message: 'Diary entry written to vault.', entry: q.rows[0] });
     } else {
       const exist = memStore.diaries.find(
-        d => d.user_id === req.user.id && d.title === title && d.content === content
+        d => (d.user_id === req.user.id || (d.user_email && d.user_email.toLowerCase() === userEmail)) &&
+             d.title === title && d.content === content
       );
       if (exist) {
         return res.json({ message: 'Diary entry already vaulted.', entry: exist });
@@ -589,6 +684,7 @@ router.post('/diary', requireAuth, async (req, res) => {
       const entry = {
         id: Date.now(),
         user_id: req.user.id,
+        user_email: userEmail,
         title,
         content,
         mood: mood || 'Nostalgia',
@@ -607,10 +703,19 @@ router.post('/diary', requireAuth, async (req, res) => {
 
 router.delete('/diary/:id', requireAuth, async (req, res) => {
   try {
-    if (pool) {
-      await pool.query('DELETE FROM diaries WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    const activePool = getPool();
+    const userId = Number(req.user.id) || 0;
+    const userEmail = (req.user.email || '').trim().toLowerCase();
+
+    if (activePool) {
+      await activePool.query(
+        'DELETE FROM diaries WHERE id = $1 AND (user_id = $2 OR (user_email IS NOT NULL AND LOWER(user_email) = $3))',
+        [req.params.id, userId, userEmail]
+      );
     } else {
-      memStore.diaries = memStore.diaries.filter(d => !(d.id == req.params.id && d.user_id === req.user.id));
+      memStore.diaries = memStore.diaries.filter(
+        d => !(d.id == req.params.id && (d.user_id === req.user.id || (d.user_email && d.user_email.toLowerCase() === userEmail)))
+      );
     }
     return res.json({ message: 'Diary deleted.' });
   } catch (err) {
@@ -621,11 +726,20 @@ router.delete('/diary/:id', requireAuth, async (req, res) => {
 // ================= TIME CAPSULES =================
 router.get('/capsules', requireAuth, async (req, res) => {
   try {
-    if (pool) {
-      const q = await pool.query('SELECT * FROM capsules WHERE user_id = $1 ORDER BY unlock_date ASC', [req.user.id]);
+    const activePool = getPool();
+    const userId = Number(req.user.id) || 0;
+    const userEmail = (req.user.email || '').trim().toLowerCase();
+
+    if (activePool) {
+      const q = await activePool.query(
+        'SELECT * FROM capsules WHERE (user_id = $1 OR (user_email IS NOT NULL AND LOWER(user_email) = $2)) ORDER BY unlock_date ASC',
+        [userId, userEmail]
+      );
       return res.json({ capsules: q.rows });
     } else {
-      const capsules = memStore.capsules.filter(c => c.user_id === req.user.id);
+      const capsules = memStore.capsules.filter(
+        c => c.user_id === req.user.id || (c.user_email && c.user_email.toLowerCase() === userEmail)
+      );
       return res.json({ capsules });
     }
   } catch (err) {
@@ -639,16 +753,21 @@ router.post('/capsules', requireAuth, async (req, res) => {
     if (!title || !message || !unlock_date) {
       return res.status(400).json({ error: 'Title, message, and unlock date required.' });
     }
-    if (pool) {
-      const q = await pool.query(
-        'INSERT INTO capsules (user_id, title, message, media_urls, unlock_date) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-        [req.user.id, title, message, media_urls || '', unlock_date]
+    const activePool = getPool();
+    const userId = Number(req.user.id) || 0;
+    const userEmail = (req.user.email || '').trim().toLowerCase();
+
+    if (activePool) {
+      const q = await activePool.query(
+        'INSERT INTO capsules (user_id, user_email, title, message, media_urls, unlock_date) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        [userId, userEmail, title, message, media_urls || '', unlock_date]
       );
       return res.status(201).json({ message: 'Time capsule sealed.', capsule: q.rows[0] });
     } else {
       const capsule = {
         id: Date.now(),
         user_id: req.user.id,
+        user_email: userEmail,
         title,
         message,
         media_urls: media_urls || '',
@@ -666,14 +785,20 @@ router.post('/capsules', requireAuth, async (req, res) => {
 
 router.put('/capsules/:id/open', requireAuth, async (req, res) => {
   try {
-    if (pool) {
-      const q = await pool.query(
-        'UPDATE capsules SET is_opened = 1 WHERE id = $1 AND user_id = $2 RETURNING *',
-        [req.params.id, req.user.id]
+    const activePool = getPool();
+    const userId = Number(req.user.id) || 0;
+    const userEmail = (req.user.email || '').trim().toLowerCase();
+
+    if (activePool) {
+      const q = await activePool.query(
+        'UPDATE capsules SET is_opened = 1 WHERE id = $1 AND (user_id = $2 OR (user_email IS NOT NULL AND LOWER(user_email) = $3)) RETURNING *',
+        [req.params.id, userId, userEmail]
       );
       return res.json({ message: 'Capsule opened.', capsule: q.rows[0] });
     } else {
-      const c = memStore.capsules.find(item => item.id == req.params.id && item.user_id === req.user.id);
+      const c = memStore.capsules.find(
+        item => item.id == req.params.id && (item.user_id === req.user.id || (item.user_email && item.user_email.toLowerCase() === userEmail))
+      );
       if (c) c.is_opened = 1;
       return res.json({ message: 'Capsule opened.', capsule: c });
     }
@@ -684,10 +809,19 @@ router.put('/capsules/:id/open', requireAuth, async (req, res) => {
 
 router.delete('/capsules/:id', requireAuth, async (req, res) => {
   try {
-    if (pool) {
-      await pool.query('DELETE FROM capsules WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    const activePool = getPool();
+    const userId = Number(req.user.id) || 0;
+    const userEmail = (req.user.email || '').trim().toLowerCase();
+
+    if (activePool) {
+      await activePool.query(
+        'DELETE FROM capsules WHERE id = $1 AND (user_id = $2 OR (user_email IS NOT NULL AND LOWER(user_email) = $3))',
+        [req.params.id, userId, userEmail]
+      );
     } else {
-      memStore.capsules = memStore.capsules.filter(c => !(c.id == req.params.id && c.user_id === req.user.id));
+      memStore.capsules = memStore.capsules.filter(
+        c => !(c.id == req.params.id && (c.user_id === req.user.id || (c.user_email && c.user_email.toLowerCase() === userEmail)))
+      );
     }
     return res.json({ message: 'Capsule deleted.' });
   } catch (err) {
@@ -698,32 +832,45 @@ router.delete('/capsules/:id', requireAuth, async (req, res) => {
 // ================= STATS =================
 router.get('/stats', requireAuth, async (req, res) => {
   try {
+    const activePool = getPool();
+    const userId = Number(req.user.id) || 0;
+    const userEmail = (req.user.email || '').trim().toLowerCase();
+
     let mediaCount = 0;
     let videoCount = 0;
     let diaryCount = 0;
     let capsuleCount = 0;
     let totalBytes = 0;
 
-    if (pool) {
-      const m = await pool.query('SELECT * FROM media WHERE user_id = $1', [req.user.id]);
+    if (activePool) {
+      const m = await activePool.query(
+        'SELECT * FROM media WHERE user_id = $1 OR (user_email IS NOT NULL AND LOWER(user_email) = $2)',
+        [userId, userEmail]
+      );
       for (const item of m.rows) {
         totalBytes += Number(item.size_bytes || 0);
         if (item.media_type === 'video') videoCount++;
         else mediaCount++;
       }
-      const d = await pool.query('SELECT COUNT(*) as count FROM diaries WHERE user_id = $1', [req.user.id]);
+      const d = await activePool.query(
+        'SELECT COUNT(*) as count FROM diaries WHERE user_id = $1 OR (user_email IS NOT NULL AND LOWER(user_email) = $2)',
+        [userId, userEmail]
+      );
       diaryCount = Number(d.rows[0].count || 0);
-      const c = await pool.query('SELECT COUNT(*) as count FROM capsules WHERE user_id = $1', [req.user.id]);
+      const c = await activePool.query(
+        'SELECT COUNT(*) as count FROM capsules WHERE user_id = $1 OR (user_email IS NOT NULL AND LOWER(user_email) = $2)',
+        [userId, userEmail]
+      );
       capsuleCount = Number(c.rows[0].count || 0);
     } else {
-      const m = memStore.media.filter(item => item.user_id === req.user.id);
+      const m = memStore.media.filter(item => item.user_id === req.user.id || (item.user_email && item.user_email.toLowerCase() === userEmail));
       for (const item of m) {
         totalBytes += Number(item.size_bytes || 0);
         if (item.media_type === 'video') videoCount++;
         else mediaCount++;
       }
-      diaryCount = memStore.diaries.filter(item => item.user_id === req.user.id).length;
-      capsuleCount = memStore.capsules.filter(item => item.user_id === req.user.id).length;
+      diaryCount = memStore.diaries.filter(item => item.user_id === req.user.id || (item.user_email && item.user_email.toLowerCase() === userEmail)).length;
+      capsuleCount = memStore.capsules.filter(item => item.user_id === req.user.id || (item.user_email && item.user_email.toLowerCase() === userEmail)).length;
     }
 
     res.json({

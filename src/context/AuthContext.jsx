@@ -36,7 +36,7 @@ export const AuthProvider = ({ children }) => {
           if (data && data.user) {
             setUser(data.user);
             localStorage.setItem('vault_user', JSON.stringify(data.user));
-            vaultEngine.syncLocalToCloud(token, data.user.id).catch(() => {});
+            vaultEngine.syncLocalToCloud(token, data.user.id, data.user.email).catch(() => {});
           }
         })
         .catch(() => {
@@ -58,7 +58,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('vault_token', newToken);
     localStorage.setItem('vault_user', JSON.stringify(userData));
     if (userData?.id) {
-      vaultEngine.syncLocalToCloud(newToken, userData.id).catch(() => {});
+      vaultEngine.syncLocalToCloud(newToken, userData.id, userData.email).catch(() => {});
     }
   };
 

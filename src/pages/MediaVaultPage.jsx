@@ -32,7 +32,7 @@ export default function MediaVaultPage() {
   const fetchMedia = async () => {
     try {
       setLoading(true);
-      const allItems = await vaultEngine.getVaultItems(token, user?.id || 'guest');
+      const allItems = await vaultEngine.getVaultItems(token, user?.id || 'guest', user?.email || '');
 
       let pCount = 0;
       let vCount = 0;
@@ -77,7 +77,9 @@ export default function MediaVaultPage() {
           files[i],
           uploadCaption.trim() || files[i].name,
           new Date().toISOString().split('T')[0],
-          ''
+          '',
+          null,
+          user?.email || ''
         );
         uploadedCount++;
       }

@@ -73,7 +73,7 @@ export default function DiaryPage() {
   const fetchEntries = async () => {
     try {
       setLoading(true);
-      const list = await vaultEngine.getDiaries(token, user?.id || 'guest');
+      const list = await vaultEngine.getDiaries(token, user?.id || 'guest', user?.email || '');
       setEntries(list);
     } catch (err) {
       console.error('Failed to load diary', err);
@@ -260,7 +260,7 @@ export default function DiaryPage() {
           mood: editMood,
           weather: editWeather,
           image_url: editImageUrl.trim() || null
-        }, editingEntry.id);
+        }, editingEntry.id, user?.email || '');
       } catch (e) {
         console.error('Local vaultEngine update failed:', e);
       }
@@ -366,7 +366,7 @@ export default function DiaryPage() {
         mood,
         weather,
         image_url: imageUrl.trim() || null
-      });
+      }, null, user?.email || '');
     } catch (e) {
       console.error('Save diary failed:', e);
     }

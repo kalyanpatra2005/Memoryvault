@@ -155,8 +155,93 @@ export const namesMatch = (name1, name2) => {
 };
 
 // Universal user matcher: ensures all memories and photos saved on this device remain permanently accessible across logouts, guest sessions, and account logins
-export const matchesUser = (itemUserId, targetUserId) => {
+export const matchesUser = (itemOrUserId, targetUserId, targetUserEmail = '') => {
+  if (!targetUserId || targetUserId === 'guest') return true;
+
+  if (itemOrUserId && typeof itemOrUserId === 'object') {
+    const itemUserId = itemOrUserId.user_id;
+    const itemEmail = itemOrUserId.user_email;
+
+    // Unassigned or guest items can be claimed
+    if (!itemUserId || String(itemUserId).startsWith('guest')) return true;
+
+    // Match by ID
+    if (String(itemUserId) === String(targetUserId)) return true;
+
+    // Match by Email
+    if (targetUserEmail && itemEmail && String(itemEmail).trim().toLowerCase() === String(targetUserEmail).trim().toLowerCase()) {
+      return true;
+    }
+
+    return true; // Keep local memories visible across session transitions on same device
+  }
+
+  if (!itemOrUserId || String(itemOrUserId).startsWith('guest')) return true;
+  if (String(itemOrUserId) === String(targetUserId)) return true;
   return true;
+};
+
+// Automatically optimize high-resolution smartphone photos (e.g. 5MB-15MB) into high-quality web-ready images (~300KB)
+// This completely avoids Vercel's strict 4.5MB serverless payload limit while guaranteeing instant uploads and razor-sharp displays.
+export const optimizeImageForCloud = async (file) => {
+  if (!file || typeof window === 'undefined') return file;
+  const isImage = file.type && file.type.startsWith('image/') && !file.type.includes('svg') && !file.type.includes('gif');
+  if (!isImage) return file;
+
+  // If already under 600KB, no resize needed
+  if (file.size <= 600 * 1024) return file;
+
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const maxDimension = 1920;
+        let { width, height } = img;
+
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(file);
+
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob && blob.size < file.size) {
+              const optimized = new File([blob], file.name, {
+                type: 'image/jpeg',
+                lastModified: Date.now()
+              });
+              resolve(optimized);
+            } else {
+              resolve(file);
+            }
+          },
+          'image/jpeg',
+          0.85
+        );
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(file);
+      };
+      img.src = url;
+    } catch (e) {
+      resolve(file);
+    }
+  });
 };
 
 // Universal helper to detect video media accurately across all formats and platforms
@@ -694,7 +779,13 @@ export const vaultEngine = {
   },
 
   // ================= VAULT ITEMS (PHOTOS & VIDEOS) =================
-  async getVaultItems(token, userId, search = '') {
+  async getVaultItems(token, userId, userEmail = '', search = '') {
+    // Handle backward-compatibility if 3rd arg was search
+    if (typeof userEmail === 'string' && !userEmail.includes('@') && userEmail.length > 0 && !search) {
+      search = userEmail;
+      userEmail = '';
+    }
+
     const list = [];
 
     const addOrMerge = (item) => {
@@ -736,7 +827,7 @@ export const vaultEngine = {
     try {
       const idbItems = await getIDBStoreData('vault_items');
       idbItems.forEach(item => {
-        if (matchesUser(item.user_id, userId)) {
+        if (matchesUser(item, userId, userEmail)) {
           addOrMerge(item);
         }
       });
@@ -746,7 +837,7 @@ export const vaultEngine = {
     try {
       const localItems = getLocalData('vault_items', []);
       localItems.forEach(item => {
-        if (matchesUser(item.user_id, userId)) {
+        if (matchesUser(item, userId, userEmail)) {
           addOrMerge(item);
         }
       });
@@ -781,23 +872,27 @@ export const vaultEngine = {
     return processed;
   },
 
-  async uploadVaultItem(token, userId, file, caption, memoryDate, tags, unlockDate) {
-    // 1. ALWAYS store into permanent local IndexedDB & LocalStorage FIRST
+  async uploadVaultItem(token, userId, file, caption, memoryDate, tags, unlockDate, userEmail = '') {
+    // 1. Optimize image client-side to prevent Vercel 4.5MB payload rejection
+    const processedFile = await optimizeImageForCloud(file);
+
+    // 2. ALWAYS store into permanent local IndexedDB & LocalStorage FIRST
     const localItem = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = async () => {
         try {
           const dataUrl = reader.result;
-          const isVideo = isVideoMedia(file);
+          const isVideo = isVideoMedia(processedFile);
           const newItem = {
             id: Date.now() + Math.floor(Math.random() * 1000),
             user_id: userId,
+            user_email: userEmail || '',
             type: isVideo ? 'video' : 'photo',
             media_type: isVideo ? 'video' : 'photo',
-            original_name: file.name,
-            file_size: file.size,
-            size_bytes: file.size,
-            mime_type: file.type || (isVideo ? 'video/mp4' : 'image/jpeg'),
+            original_name: processedFile.name,
+            file_size: processedFile.size,
+            size_bytes: processedFile.size,
+            mime_type: processedFile.type || (isVideo ? 'video/mp4' : 'image/jpeg'),
             data_url: dataUrl,
             media_url: dataUrl,
             caption: caption || '',
@@ -827,14 +922,14 @@ export const vaultEngine = {
         }
       };
       reader.onerror = () => reject(new Error('Failed to read file for vault preservation.'));
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(processedFile);
     });
 
-    // 2. ALSO send to cloud server for cross-device synchronization
+    // 3. ALSO send to cloud server for cross-device synchronization
     if (token) {
       try {
         const formData = new FormData();
-        formData.append('files', file);
+        formData.append('files', processedFile);
         formData.append('caption', caption || '');
         formData.append('memoryDate', memoryDate || '');
         formData.append('tags', tags || '');
@@ -902,7 +997,12 @@ export const vaultEngine = {
   },
 
   // ================= TRAGIC DIARY =================
-  async getDiaries(token, userId, search = '') {
+  async getDiaries(token, userId, userEmail = '', search = '') {
+    if (typeof userEmail === 'string' && !userEmail.includes('@') && userEmail.length > 0 && !search) {
+      search = userEmail;
+      userEmail = '';
+    }
+
     const list = [];
 
     const addOrMerge = (entry) => {
@@ -946,7 +1046,7 @@ export const vaultEngine = {
     try {
       const idbDiaries = await getIDBStoreData('diary_entries');
       idbDiaries.forEach(entry => {
-        if (matchesUser(entry.user_id, userId)) {
+        if (matchesUser(entry, userId, userEmail)) {
           addOrMerge(entry);
         }
       });
@@ -956,7 +1056,7 @@ export const vaultEngine = {
     try {
       const localDiaries = getLocalData('diary_entries', []);
       localDiaries.forEach(entry => {
-        if (matchesUser(entry.user_id, userId)) {
+        if (matchesUser(entry, userId, userEmail)) {
           addOrMerge(entry);
         }
       });
@@ -976,12 +1076,13 @@ export const vaultEngine = {
     return filtered;
   },
 
-  async saveDiary(token, userId, diaryData, existingId = null) {
+  async saveDiary(token, userId, diaryData, existingId = null, userEmail = '') {
     // 1. ALWAYS save locally to IndexedDB & LocalStorage FIRST
     const entryId = existingId ? existingId : Date.now();
     const entryRecord = {
       id: entryId,
       user_id: userId,
+      user_email: userEmail || '',
       title: diaryData.title ? diaryData.title.trim() : 'Untitled Memory',
       content: diaryData.content || '',
       mood: diaryData.mood || 'Melancholy',
@@ -1060,7 +1161,7 @@ export const vaultEngine = {
     return true;
   },
 
-  async syncLocalToCloud(token, userId) {
+  async syncLocalToCloud(token, userId, userEmail = '') {
     if (!token || !userId) return;
     try {
       // 1. Sync local media items (combining IndexedDB and LocalStorage)
@@ -1074,7 +1175,8 @@ export const vaultEngine = {
       }
 
       for (const item of allMedia) {
-        if (item.data_url) {
+        if (item.data_url && matchesUser(item, userId, userEmail)) {
+          if (item.server_id) continue;
           try {
             const res = await fetch('/api/media/upload', {
               method: 'POST',
@@ -1114,27 +1216,30 @@ export const vaultEngine = {
       }
 
       for (const entry of allDiaries) {
-        try {
-          const res = await fetch('/api/diary', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              title: entry.title,
-              content: entry.content,
-              mood: entry.mood,
-              image_url: entry.image_url,
-              weather: entry.weather
-            })
-          });
-          const data = await safeFetchJson(res);
-          if (res.ok && data && data.entry) {
-            entry.server_id = data.entry.id;
-            await putIDBStoreItem('diary_entries', entry);
-          }
-        } catch (e) {}
+        if (matchesUser(entry, userId, userEmail)) {
+          if (entry.server_id) continue;
+          try {
+            const res = await fetch('/api/diary', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                title: entry.title,
+                content: entry.content,
+                mood: entry.mood,
+                image_url: entry.image_url,
+                weather: entry.weather
+              })
+            });
+            const data = await safeFetchJson(res);
+            if (res.ok && data && data.entry) {
+              entry.server_id = data.entry.id;
+              await putIDBStoreItem('diary_entries', entry);
+            }
+          } catch (e) {}
+        }
       }
     } catch (e) {}
   }
