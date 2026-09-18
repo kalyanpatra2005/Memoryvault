@@ -116,10 +116,16 @@ export default function Navbar({ activeTab, setActiveTab, onOpenAuth }) {
           ) : (
             <div className="flex items-center space-x-2">
               <button
+                onClick={() => onOpenAuth('login')}
+                className="px-3.5 py-1.5 rounded-lg text-sm text-amber-200 hover:text-amber-100 hover:bg-stone-900/80 border border-amber-800/50 transition-all font-medium"
+              >
+                Sign In
+              </button>
+              <button
                 onClick={() => onOpenAuth('register')}
                 className="px-4 py-1.5 rounded-lg text-sm bg-gradient-to-r from-amber-700 via-amber-600 to-amber-700 text-stone-900 font-semibold hover:brightness-110 shadow-md shadow-amber-950/30 transition-all border border-amber-500/40"
               >
-                Register Free
+                Create Vault
               </button>
             </div>
           )}

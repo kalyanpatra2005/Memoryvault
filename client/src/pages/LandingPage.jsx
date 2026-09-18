@@ -31,13 +31,19 @@ export default function LandingPage({ onOpenAuth }) {
         </p>
 
         {/* Action Buttons */}
-        <div className="mt-10 flex items-center justify-center">
+        <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
           <button
-            onClick={() => onOpenAuth('register')}
+            onClick={() => onOpenAuth('login')}
             className="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 text-stone-950 font-bold text-base shadow-xl shadow-amber-950/70 hover:brightness-110 hover:scale-[1.02] transition-all border border-amber-300/40 flex items-center justify-center space-x-2"
           >
             <KeyRound className="w-5 h-5 text-stone-900" />
-            <span>Open Your Personal Vault</span>
+            <span>Unlock Vault (Sign In)</span>
+          </button>
+          <button
+            onClick={() => onOpenAuth('register')}
+            className="w-full sm:w-auto px-6 py-4 rounded-xl bg-stone-900/90 text-amber-200 hover:text-amber-100 font-semibold text-base border border-amber-800/60 hover:border-amber-600/80 transition-all flex items-center justify-center space-x-2"
+          >
+            <span>Create New Vault</span>
           </button>
         </div>
 

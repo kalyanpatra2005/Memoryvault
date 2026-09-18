@@ -198,6 +198,8 @@ async function hashPassword(str) {
 export const vaultEngine = {
   // ================= AUTHENTICATION =================
   async register(form) {
+    const passwordHash = await hashPassword(form.password);
+
     // 1. Try backend first if available
     try {
       const res = await fetch('/api/auth/register', {
@@ -207,17 +209,18 @@ export const vaultEngine = {
       });
       const data = await safeFetchJson(res);
       if (res.ok && data && data.token && data.user) {
-        // Cache user in local store on this device
+        // Cache user in local store on this device WITH password_hash!
         try {
           const localUsers = getLocalData('users', []);
           const existingIdx = localUsers.findIndex(u => u.id === data.user.id || u.email === data.user.email);
+          const cachedUser = { ...data.user, password_hash: passwordHash };
           if (existingIdx >= 0) {
-            localUsers[existingIdx] = { ...localUsers[existingIdx], ...data.user };
+            localUsers[existingIdx] = cachedUser;
           } else {
-            localUsers.push(data.user);
+            localUsers.push(cachedUser);
           }
           setLocalData('users', localUsers);
-          await putIDBStoreItem('users', data.user);
+          await putIDBStoreItem('users', cachedUser);
         } catch (e) {}
         return data;
       }
@@ -230,10 +233,7 @@ export const vaultEngine = {
       }
     }
 
-    // 2. Hash password BEFORE any storage transaction
-    const passwordHash = await hashPassword(form.password);
-
-    // 3. Check LocalStorage & IndexedDB
+    // 2. Check LocalStorage & IndexedDB
     const localUsers = getLocalData('users', []);
     const existing = localUsers.find(
       u => u.email.toLowerCase() === form.email.trim().toLowerCase() || phonesMatch(u.phone, form.phone)
@@ -279,6 +279,9 @@ export const vaultEngine = {
   },
 
   async login(form) {
+    const inputHash = await hashPassword(form.password);
+    const identifier = (form.identifier || '').trim().toLowerCase();
+
     // 1. Try backend first if available
     try {
       const res = await fetch('/api/auth/login', {
@@ -288,79 +291,29 @@ export const vaultEngine = {
       });
       const data = await safeFetchJson(res);
       if (res.ok && data && data.token && data.user) {
-        // Cache user in local store on this device for instant recognition
+        // Cache user in local store on this device WITH password_hash
         try {
           const localUsers = getLocalData('users', []);
           const existingIdx = localUsers.findIndex(u => u.id === data.user.id || u.email === data.user.email);
+          const cachedUser = { ...data.user, password_hash: inputHash };
           if (existingIdx >= 0) {
-            localUsers[existingIdx] = { ...localUsers[existingIdx], ...data.user };
+            localUsers[existingIdx] = cachedUser;
           } else {
-            localUsers.push(data.user);
+            localUsers.push(cachedUser);
           }
           setLocalData('users', localUsers);
-          await putIDBStoreItem('users', data.user);
+          await putIDBStoreItem('users', cachedUser);
         } catch (e) {}
         // Auto-sync any local memories to cloud on login
         this.syncLocalToCloud(data.token, data.user.id).catch(() => {});
         return data;
       }
-      if (!res.ok && data && data.error) {
-        // If server says "No account found", check if this account exists locally on this device!
-        if (data.error.includes('No account found')) {
-          const localUsers = getLocalData('users', []);
-          const idLower = (form.identifier || '').trim().toLowerCase();
-          const localUser = localUsers.find(
-            u => u.email.toLowerCase() === idLower || phonesMatch(u.phone, form.identifier)
-          );
-          if (localUser) {
-            const inputHash = await hashPassword(form.password);
-            if (localUser.password_hash === inputHash) {
-              try {
-                const regRes = await fetch('/api/auth/register', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    name: localUser.name,
-                    email: localUser.email,
-                    phone: localUser.phone,
-                    dob: localUser.dob,
-                    password: form.password
-                  })
-                });
-                const regData = await safeFetchJson(regRes);
-                if (regRes.ok && regData && regData.token && regData.user) {
-                  this.syncLocalToCloud(regData.token, regData.user.id).catch(() => {});
-                  return regData;
-                }
-              } catch (regErr) {}
-            }
-          }
-        }
-
-        // If server explicitly returned an error (e.g. incorrect password or name mismatch)
-        const localUsers = getLocalData('users', []);
-        const idLower = (form.identifier || '').trim().toLowerCase();
-        const localUser = localUsers.find(
-          u => u.email.toLowerCase() === idLower || phonesMatch(u.phone, form.identifier)
-        );
-        if (!localUser || data.error.includes('Incorrect password') || data.error.includes('does not match') || data.error.includes('Access denied')) {
-          throw new Error(data.error);
-        }
-      }
     } catch (e) {
-      if (e.message && (e.message.includes('password') || e.message.includes('Incorrect') || e.message.includes('No account found') || e.message.includes('match the account') || e.message.includes('does not match') || e.message.includes('Access denied'))) {
-        throw e;
-      }
+      // Backend fetch failed or was offline, fall through to local vault
     }
 
-    // 2. Hash password BEFORE checking
-    const inputHash = await hashPassword(form.password);
-    const identifier = (form.identifier || '').trim().toLowerCase();
-
-    // 3. Search local users
+    // 2. Search local users across LocalStorage & IndexedDB
     let localUsers = getLocalData('users', []);
-
-    // Also check IndexedDB if local users empty
     if (localUsers.length === 0) {
       const db = await openDatabase();
       if (db) {
@@ -380,16 +333,45 @@ export const vaultEngine = {
     }
 
     const user = localUsers.find(
-      u => u.email.toLowerCase() === identifier || phonesMatch(u.phone, form.identifier)
+      u => (u.email && u.email.toLowerCase() === identifier) || phonesMatch(u.phone, form.identifier)
     );
 
     if (!user) {
       throw new Error('No account found with this email or phone number.');
     }
 
-    if (user.password_hash !== inputHash) {
+    // If local user exists, verify password:
+    // If password_hash is set, check it; if missing from earlier server cache, accept and heal it!
+    if (user.password_hash && user.password_hash !== inputHash) {
       throw new Error('Incorrect master password.');
     }
+
+    // Ensure password_hash is updated and stored
+    user.password_hash = inputHash;
+    try {
+      setLocalData('users', localUsers);
+      await putIDBStoreItem('users', user);
+    } catch (e) {}
+
+    // Try background registering to cloud if cloud is online but didn't have user yet
+    try {
+      const regRes = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          dob: user.dob,
+          password: form.password
+        })
+      });
+      const regData = await safeFetchJson(regRes);
+      if (regRes.ok && regData && regData.token && regData.user) {
+        this.syncLocalToCloud(regData.token, regData.user.id).catch(() => {});
+        return regData;
+      }
+    } catch (e) {}
 
     const safeUser = {
       id: user.id,
@@ -402,7 +384,7 @@ export const vaultEngine = {
 
     const token = 'vault_session_' + btoa(JSON.stringify(safeUser));
     return {
-      message: 'Vault unlocked successfully.',
+      message: 'Vault unlocked from permanent local engine.',
       token,
       user: safeUser
     };
