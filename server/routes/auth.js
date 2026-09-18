@@ -140,6 +140,35 @@ router.post('/register', (req, res) => {
   }
 });
 
+// Phone normalization helper
+function normalizePhone(p) {
+  if (!p) return '';
+  return String(p).replace(/\D/g, '');
+}
+
+function phonesMatch(p1, p2) {
+  if (!p1 || !p2) return false;
+  const s1 = normalizePhone(p1);
+  const s2 = normalizePhone(p2);
+  if (!s1 || !s2) return false;
+  if (s1 === s2) return true;
+  if (s1.length >= 10 && s2.length >= 10) {
+    return s1.slice(-10) === s2.slice(-10);
+  }
+  return false;
+}
+
+function namesMatch(dbName, inputName) {
+  if (!dbName || !inputName) return false;
+  const n1 = String(dbName).trim().toLowerCase().replace(/[\.\,\_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const n2 = String(inputName).trim().toLowerCase().replace(/[\.\,\_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (n1 === n2) return true;
+  if (n1.includes(n2) || n2.includes(n1)) return true;
+  const w1 = n1.split(' ').filter(Boolean);
+  const w2 = n2.split(' ').filter(Boolean);
+  return w1.some(w => w2.includes(w));
+}
+
 // Login
 router.post('/login', (req, res) => {
   try {
@@ -153,20 +182,28 @@ router.post('/login', (req, res) => {
     }
 
     const cleanIdentifier = identifier.trim().toLowerCase();
-    const cleanName = name ? name.trim().toLowerCase() : null;
+    const cleanName = name ? name.trim() : null;
 
-    // Look up by email or phone
-    const user = db.prepare(`
+    // 1. Look up by exact email or phone
+    let user = db.prepare(`
       SELECT * FROM users 
       WHERE LOWER(email) = ? OR phone = ?
-    `).get(cleanIdentifier, cleanIdentifier);
+    `).get(cleanIdentifier, identifier.trim());
+
+    // 2. If not found, try normalized phone matching
+    if (!user) {
+      const allUsers = db.prepare('SELECT * FROM users').all();
+      user = allUsers.find(u => {
+        return u.email.toLowerCase() === cleanIdentifier || phonesMatch(u.phone, identifier);
+      });
+    }
 
     if (!user) {
       return res.status(401).json({ error: 'No account found with this email or phone number' });
     }
 
     // If name was provided, verify name matches
-    if (cleanName && !user.name.toLowerCase().includes(cleanName) && !cleanName.includes(user.name.toLowerCase())) {
+    if (cleanName && !namesMatch(user.name, cleanName)) {
       return res.status(401).json({ error: 'Name does not match our records for this account' });
     }
 

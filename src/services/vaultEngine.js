@@ -121,6 +121,39 @@ export const safeFetchJson = async (res) => {
   }
 };
 
+// Backward-compatible alias to prevent any undefined function reference
+export const safeJsonParse = safeFetchJson;
+
+// Phone normalization helper
+export const normalizePhone = (p) => {
+  if (!p) return '';
+  return String(p).replace(/\D/g, '');
+};
+
+export const phonesMatch = (p1, p2) => {
+  if (!p1 || !p2) return false;
+  const s1 = normalizePhone(p1);
+  const s2 = normalizePhone(p2);
+  if (!s1 || !s2) return false;
+  if (s1 === s2) return true;
+  if (s1.length >= 10 && s2.length >= 10) {
+    return s1.slice(-10) === s2.slice(-10);
+  }
+  return false;
+};
+
+// Smart name matcher (handles case, spacing, punctuation, and first name vs full name)
+export const namesMatch = (name1, name2) => {
+  if (!name1 || !name2) return false;
+  const n1 = String(name1).trim().toLowerCase().replace(/[\.\,\_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const n2 = String(name2).trim().toLowerCase().replace(/[\.\,\_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (n1 === n2) return true;
+  if (n1.includes(n2) || n2.includes(n1)) return true;
+  const w1 = n1.split(' ').filter(Boolean);
+  const w2 = n2.split(' ').filter(Boolean);
+  return w1.some(w => w2.includes(w));
+};
+
 // Universal user matcher to prevent guest session token or ID changes from hiding local memories
 export const matchesUser = (itemUserId, targetUserId) => {
   if (!targetUserId || !itemUserId) return true;
@@ -172,8 +205,20 @@ export const vaultEngine = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
       });
-      const data = await safeJsonParse(res);
+      const data = await safeFetchJson(res);
       if (res.ok && data && data.token && data.user) {
+        // Cache user in local store on this device
+        try {
+          const localUsers = getLocalData('users', []);
+          const existingIdx = localUsers.findIndex(u => u.id === data.user.id || u.email === data.user.email);
+          if (existingIdx >= 0) {
+            localUsers[existingIdx] = { ...localUsers[existingIdx], ...data.user };
+          } else {
+            localUsers.push(data.user);
+          }
+          setLocalData('users', localUsers);
+          await putIDBStoreItem('users', data.user);
+        } catch (e) {}
         return data;
       }
       if (!res.ok && data && data.error) {
@@ -191,7 +236,7 @@ export const vaultEngine = {
     // 3. Check LocalStorage & IndexedDB
     const localUsers = getLocalData('users', []);
     const existing = localUsers.find(
-      u => u.email.toLowerCase() === form.email.trim().toLowerCase() || u.phone === form.phone.trim()
+      u => u.email.toLowerCase() === form.email.trim().toLowerCase() || phonesMatch(u.phone, form.phone)
     );
 
     if (existing) {
@@ -241,30 +286,42 @@ export const vaultEngine = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
       });
-      const data = await safeJsonParse(res);
+      const data = await safeFetchJson(res);
       if (res.ok && data && data.token && data.user) {
+        // Cache user in local store on this device for instant recognition
+        try {
+          const localUsers = getLocalData('users', []);
+          const existingIdx = localUsers.findIndex(u => u.id === data.user.id || u.email === data.user.email);
+          if (existingIdx >= 0) {
+            localUsers[existingIdx] = { ...localUsers[existingIdx], ...data.user };
+          } else {
+            localUsers.push(data.user);
+          }
+          setLocalData('users', localUsers);
+          await putIDBStoreItem('users', data.user);
+        } catch (e) {}
         return data;
       }
       if (!res.ok && data && data.error) {
-        // Only throw if no local account with matching email/phone exists
+        // If server explicitly returned an error (e.g. incorrect password or name mismatch)
         const localUsers = getLocalData('users', []);
         const idLower = (form.identifier || '').trim().toLowerCase();
         const localUser = localUsers.find(
-          u => u.email.toLowerCase() === idLower || u.phone.toLowerCase() === idLower
+          u => u.email.toLowerCase() === idLower || phonesMatch(u.phone, form.identifier)
         );
-        if (!localUser) {
+        if (!localUser || data.error.includes('Incorrect password') || data.error.includes('does not match') || data.error.includes('Access denied')) {
           throw new Error(data.error);
         }
       }
     } catch (e) {
-      if (e.message && (e.message.includes('password') || e.message.includes('Incorrect') || e.message.includes('No account found') || e.message.includes('match the account'))) {
+      if (e.message && (e.message.includes('password') || e.message.includes('Incorrect') || e.message.includes('No account found') || e.message.includes('match the account') || e.message.includes('does not match') || e.message.includes('Access denied'))) {
         throw e;
       }
     }
 
     // 2. Hash password BEFORE checking
     const inputHash = await hashPassword(form.password);
-    const identifier = form.identifier.trim().toLowerCase();
+    const identifier = (form.identifier || '').trim().toLowerCase();
 
     // 3. Search local users
     let localUsers = getLocalData('users', []);
@@ -289,14 +346,14 @@ export const vaultEngine = {
     }
 
     const user = localUsers.find(
-      u => u.email.toLowerCase() === identifier || u.phone.toLowerCase() === identifier
+      u => u.email.toLowerCase() === identifier || phonesMatch(u.phone, form.identifier)
     );
 
     if (!user) {
       throw new Error('No account found with this email or phone number.');
     }
 
-    if (user.name.toLowerCase() !== form.name.trim().toLowerCase()) {
+    if (!namesMatch(user.name, form.name)) {
       throw new Error('The provided name does not match the account records.');
     }
 

@@ -93,6 +93,10 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Vault Core server running securely on http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Vault Core server running securely on http://0.0.0.0:${PORT} (accessible from all devices)`);
+  });
+}
+
+module.exports = app;
