@@ -6,20 +6,30 @@ const multer = require('multer');
 const { Pool } = require('pg');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'vault_secret_eternal_key_2026';
-const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
 
 let pool = null;
-if (connectionString) {
-  try {
-    pool = new Pool({
-      connectionString,
-      ssl: { rejectUnauthorized: false }
-    });
-    console.log('✓ PostgreSQL pool created.');
-  } catch (e) {
-    console.error('Failed to create PostgreSQL pool:', e);
+function getPool() {
+  const conn = 
+    process.env.POSTGRES_URL || 
+    process.env.DATABASE_URL || 
+    process.env.POSTGRES_PRISMA_URL || 
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.SUPABASE_DATABASE_URL ||
+    process.env.NEON_DATABASE_URL;
+  if (!pool && conn) {
+    try {
+      pool = new Pool({
+        connectionString: conn,
+        ssl: { rejectUnauthorized: false }
+      });
+      console.log('✓ PostgreSQL pool connected.');
+    } catch (e) {
+      console.error('Failed to create PostgreSQL pool:', e);
+    }
   }
+  return pool;
 }
+getPool();
 
 // In-memory fallback if no database is connected yet
 const memStore = {
@@ -32,9 +42,10 @@ const memStore = {
 // Initialize Cloud Database Tables
 let tablesInitialized = false;
 async function initDb() {
-  if (!pool || tablesInitialized) return;
+  const p = getPool();
+  if (!p || tablesInitialized) return;
   try {
-    await pool.query(`
+    await p.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -101,7 +112,7 @@ const upload = multer({
 
 // Middleware to ensure DB tables exist
 app.use(async (req, res, next) => {
-  if (pool && !tablesInitialized) {
+  if (getPool() && !tablesInitialized) {
     await initDb();
   }
   next();
@@ -152,10 +163,11 @@ const router = express.Router();
 
 // Health Check
 router.get('/health', (req, res) => {
+  const activePool = getPool();
   res.json({
     status: 'ok',
     service: 'Memory Vault Serverless Cloud Engine',
-    hasDatabase: !!pool,
+    hasDatabase: !!activePool,
     timestamp: new Date().toISOString()
   });
 });
