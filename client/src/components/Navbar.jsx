@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import SyncModal from './SyncModal';
-import { ShieldCheck, BookOpen, Film, Clock, User, LogOut, KeyRound, Smartphone } from 'lucide-react';
+import { ShieldCheck, BookOpen, Film, Clock, User, LogOut, KeyRound } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, onOpenAuth }) {
   const { user, logout } = useAuth();
-  const [isSyncOpen, setIsSyncOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-40 bg-vault-950/90 backdrop-blur-md border-b border-amber-900/30 text-stone-200">
@@ -93,27 +91,8 @@ export default function Navbar({ activeTab, setActiveTab, onOpenAuth }) {
             >
               Security
             </button>
-
-            <button
-              onClick={() => setIsSyncOpen(true)}
-              title="Sync between Mobile and Laptop"
-              className="px-3 py-1.5 rounded-md text-sm font-medium text-amber-300 hover:text-amber-100 hover:bg-amber-950/40 border border-amber-800/40 flex items-center space-x-1.5 transition-all"
-            >
-              <Smartphone className="w-4 h-4 text-amber-400" />
-              <span>Sync Devices</span>
-            </button>
           </nav>
-        ) : (
-          <div className="hidden sm:flex items-center">
-            <button
-              onClick={() => setIsSyncOpen(true)}
-              className="text-xs text-amber-400/90 hover:text-amber-200 flex items-center space-x-1 px-2.5 py-1 rounded border border-amber-900/40 hover:bg-stone-900 transition"
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>Sync from Phone</span>
-            </button>
-          </div>
-        )}
+        ) : null}
 
         {/* User Status / Auth Buttons */}
         <div className="flex items-center space-x-3">
@@ -179,13 +158,6 @@ export default function Navbar({ activeTab, setActiveTab, onOpenAuth }) {
             <span>Capsule</span>
           </button>
           <button
-            onClick={() => setIsSyncOpen(true)}
-            className="flex flex-col items-center text-xs py-1 px-2 rounded text-amber-400"
-          >
-            <Smartphone className="w-4 h-4 mb-0.5" />
-            <span>Sync</span>
-          </button>
-          <button
             onClick={() => setActiveTab('settings')}
             className={`flex flex-col items-center text-xs py-1 px-2 rounded ${activeTab === 'settings' ? 'text-amber-300' : 'text-stone-400'}`}
           >
@@ -194,13 +166,6 @@ export default function Navbar({ activeTab, setActiveTab, onOpenAuth }) {
           </button>
         </div>
       )}
-
-      {/* Device Sync Modal */}
-      <SyncModal
-        isOpen={isSyncOpen}
-        onClose={() => setIsSyncOpen(false)}
-        initialTab={user ? 'send' : 'receive'}
-      />
     </header>
   );
 }

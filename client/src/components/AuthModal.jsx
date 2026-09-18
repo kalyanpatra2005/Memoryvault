@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { vaultEngine } from '../services/vaultEngine';
-import SyncModal from './SyncModal';
-import { X, Lock, Mail, Phone, Calendar, User, ShieldCheck, Eye, EyeOff, KeyRound, Sparkles, Smartphone } from 'lucide-react';
+import { X, Lock, Mail, Phone, Calendar, User, ShieldCheck, Eye, EyeOff, KeyRound, Sparkles } from 'lucide-react';
 
 export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
   const { login } = useAuth();
   const [mode, setMode] = useState(initialMode); // 'login' or 'register'
-  const [isSyncOpen, setIsSyncOpen] = useState(false);
 
   // Login form state (email/phone no, name, password)
   const [loginIdentifier, setLoginIdentifier] = useState('');
@@ -98,8 +96,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
   };
 
   return (
-    <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
         <div 
           className="relative w-full max-w-md bg-stone-900 border border-amber-800/40 rounded-2xl shadow-2xl p-6 sm:p-8 text-stone-100 my-8"
           style={{
@@ -156,23 +153,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
           </div>
 
           {error && (
-            <div className="mb-4 p-3 rounded-lg bg-rose-950/80 border border-rose-800/80 text-rose-200 text-xs space-y-1.5">
-              <div className="flex items-center space-x-2">
-                <span className="font-bold">Notice:</span>
-                <span>{error}</span>
-              </div>
-              {error.toLowerCase().includes('no account') && (
-                <div className="pt-1 border-t border-rose-900/60">
-                  <button
-                    type="button"
-                    onClick={() => setIsSyncOpen(true)}
-                    className="text-amber-300 font-semibold underline hover:text-amber-100 flex items-center space-x-1"
-                  >
-                    <Smartphone className="w-3.5 h-3.5" />
-                    <span>Created vault on mobile? Click here to sync it to this laptop</span>
-                  </button>
-                </div>
-              )}
+            <div className="mb-4 p-3 rounded-lg bg-rose-950/80 border border-rose-800/80 text-rose-200 text-xs">
+              <span className="font-bold">Notice: </span>
+              <span>{error}</span>
             </div>
           )}
 
@@ -439,17 +422,5 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
         </div>
       </div>
     </div>
-
-    <SyncModal
-        isOpen={isSyncOpen}
-        onClose={() => setIsSyncOpen(false)}
-        initialTab="receive"
-        onSyncSuccess={() => {
-          setIsSyncOpen(false);
-          onClose();
-          if (onSuccess) onSuccess();
-        }}
-      />
-    </>
   );
 }
