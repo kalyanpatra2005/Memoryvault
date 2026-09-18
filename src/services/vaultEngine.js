@@ -303,6 +303,38 @@ export const vaultEngine = {
         return data;
       }
       if (!res.ok && data && data.error) {
+        // If server says "No account found", check if this account exists locally on this device!
+        if (data.error.includes('No account found')) {
+          const localUsers = getLocalData('users', []);
+          const idLower = (form.identifier || '').trim().toLowerCase();
+          const localUser = localUsers.find(
+            u => u.email.toLowerCase() === idLower || phonesMatch(u.phone, form.identifier)
+          );
+          if (localUser) {
+            const inputHash = await hashPassword(form.password);
+            if (localUser.password_hash === inputHash) {
+              try {
+                const regRes = await fetch('/api/auth/register', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    name: localUser.name,
+                    email: localUser.email,
+                    phone: localUser.phone,
+                    dob: localUser.dob,
+                    password: form.password
+                  })
+                });
+                const regData = await safeFetchJson(regRes);
+                if (regRes.ok && regData && regData.token && regData.user) {
+                  this.syncLocalToCloud(regData.token, regData.user.id).catch(() => {});
+                  return regData;
+                }
+              } catch (regErr) {}
+            }
+          }
+        }
+
         // If server explicitly returned an error (e.g. incorrect password or name mismatch)
         const localUsers = getLocalData('users', []);
         const idLower = (form.identifier || '').trim().toLowerCase();
@@ -937,5 +969,57 @@ export const vaultEngine = {
     setLocalData('diary_entries', allDiaries);
 
     return true;
+  },
+
+  async syncLocalToCloud(token, userId) {
+    if (!token || !userId) return;
+    try {
+      // 1. Sync local media items
+      const localMedia = await getIDBStoreData('vault_items');
+      for (const item of localMedia) {
+        if (matchesUser(item.user_id, userId) && item.data_url) {
+          try {
+            await fetch('/api/media/upload', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                original_name: item.original_name || 'photo.jpg',
+                media_type: item.media_type || item.type || 'photo',
+                mime_type: item.mime_type || 'image/jpeg',
+                size_bytes: item.size_bytes || item.file_size || 0,
+                caption: item.caption || '',
+                data_url: item.data_url
+              })
+            });
+          } catch (e) {}
+        }
+      }
+
+      // 2. Sync local diaries
+      const localDiaries = await getIDBStoreData('diary_entries');
+      for (const entry of localDiaries) {
+        if (matchesUser(entry.user_id, userId)) {
+          try {
+            await fetch('/api/diary', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                title: entry.title,
+                content: entry.content,
+                mood: entry.mood,
+                image_url: entry.image_url,
+                weather: entry.weather
+              })
+            });
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
   }
 };
