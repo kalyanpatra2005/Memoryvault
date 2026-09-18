@@ -8,7 +8,13 @@ timeout /t 2 /nobreak >nul
 echo Starting Frontend Client on http://localhost:5173...
 start cmd /k "cd client && npm run dev"
 echo.
+echo ========================================================
 echo Application is launched!
-echo Open your browser at: http://localhost:5173
+echo.
+echo 💻 On this Laptop: Open http://localhost:5173
+echo 📱 On your Mobile Phone (Same Wi-Fi): Open http://192.168.0.36:5173
+echo.
+echo Any photo or diary uploaded on your phone will immediately
+echo appear on your laptop because both connect to the same vault!
 echo ========================================================
 pause
