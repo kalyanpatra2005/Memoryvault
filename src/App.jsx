@@ -10,7 +10,7 @@ import TimeCapsulePage from './pages/TimeCapsulePage';
 import SettingsPage from './pages/SettingsPage';
 
 function VaultContent() {
-  const { user, loading } = useAuth();
+  const { user, login, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('login');
@@ -18,6 +18,12 @@ function VaultContent() {
   const handleOpenAuth = (mode = 'login') => {
     setAuthModalMode(mode);
     setIsAuthModalOpen(true);
+  };
+
+  const handleGuestEnter = () => {
+    const session = vaultEngine.createGuestSession();
+    login(session.token, session.user);
+    setActiveTab('dashboard');
   };
 
   if (loading) {
@@ -39,9 +45,13 @@ function VaultContent() {
           activeTab="landing" 
           setActiveTab={() => {}} 
           onOpenAuth={handleOpenAuth} 
+          onGuestEnter={handleGuestEnter}
         />
         <main className="flex-1">
-          <LandingPage onOpenAuth={handleOpenAuth} />
+          <LandingPage 
+            onOpenAuth={handleOpenAuth} 
+            onGuestEnter={handleGuestEnter}
+          />
         </main>
         <AuthModal
           isOpen={isAuthModalOpen}

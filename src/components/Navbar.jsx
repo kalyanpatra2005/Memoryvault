@@ -2,7 +2,7 @@ import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, BookOpen, Film, Clock, User, LogOut, KeyRound } from 'lucide-react';
 
-export default function Navbar({ activeTab, setActiveTab, onOpenAuth }) {
+export default function Navbar({ activeTab, setActiveTab, onOpenAuth, onGuestEnter }) {
   const { user, logout } = useAuth();
 
   return (
@@ -115,6 +115,13 @@ export default function Navbar({ activeTab, setActiveTab, onOpenAuth }) {
             </div>
           ) : (
             <div className="flex items-center space-x-2">
+              <button
+                onClick={onGuestEnter}
+                className="hidden sm:inline-flex px-3 py-1.5 rounded-lg text-xs text-stone-300 hover:text-amber-200 hover:bg-stone-900/80 border border-stone-800 transition-all font-medium items-center space-x-1"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Instant Vault</span>
+              </button>
               <button
                 onClick={() => onOpenAuth('login')}
                 className="px-3.5 py-1.5 rounded-lg text-sm text-amber-200 hover:text-amber-100 hover:bg-stone-900/80 border border-amber-800/50 transition-all font-medium"

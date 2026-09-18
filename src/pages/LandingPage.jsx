@@ -1,7 +1,7 @@
 import React from 'react';
 import { Shield, Lock, BookOpen, Clock, Film, Heart, Sparkles, KeyRound, EyeOff, CheckCircle } from 'lucide-react';
 
-export default function LandingPage({ onOpenAuth }) {
+export default function LandingPage({ onOpenAuth, onGuestEnter }) {
   return (
     <div className="relative min-h-[calc(100vh-4rem)] overflow-hidden">
       {/* Subtle atmospheric background gradient & vignette */}
@@ -44,6 +44,13 @@ export default function LandingPage({ onOpenAuth }) {
             className="w-full sm:w-auto px-6 py-4 rounded-xl bg-stone-900/90 text-amber-200 hover:text-amber-100 font-semibold text-base border border-amber-800/60 hover:border-amber-600/80 transition-all flex items-center justify-center space-x-2"
           >
             <span>Create New Vault</span>
+          </button>
+          <button
+            onClick={onGuestEnter}
+            className="w-full sm:w-auto px-6 py-4 rounded-xl bg-stone-900/80 hover:bg-stone-800/90 text-stone-300 hover:text-amber-200 font-medium text-base border border-stone-700/60 hover:border-amber-700/60 transition-all flex items-center justify-center space-x-2"
+          >
+            <Shield className="w-5 h-5 text-emerald-400" />
+            <span>Instant Vault (No Login Needed)</span>
           </button>
         </div>
 

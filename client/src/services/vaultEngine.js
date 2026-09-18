@@ -154,13 +154,9 @@ export const namesMatch = (name1, name2) => {
   return w1.some(w => w2.includes(w));
 };
 
-// Universal user matcher to prevent guest session token or ID changes from hiding local memories
+// Universal user matcher: ensures all memories and photos saved on this device remain permanently accessible across logouts, guest sessions, and account logins
 export const matchesUser = (itemUserId, targetUserId) => {
-  if (!targetUserId || !itemUserId) return true;
-  if (String(itemUserId) === String(targetUserId)) return true;
-  if (targetUserId === 'guest' || itemUserId === 'guest') return true;
-  if (String(targetUserId).startsWith('guest') || String(itemUserId).startsWith('guest')) return true;
-  return false;
+  return true;
 };
 
 // Universal helper to detect video media accurately across all formats and platforms
