@@ -323,17 +323,26 @@ router.post('/auth/reset-password', async (req, res) => {
 
 router.get('/auth/me', requireAuth, async (req, res) => {
   try {
-    if (pool) {
-      const q = await pool.query('SELECT id, name, email, phone, dob, created_at FROM users WHERE id = $1', [req.user.id]);
-      if (q.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-      return res.json({ user: q.rows[0] });
-    } else {
-      const user = memStore.users.find(u => u.id === req.user.id);
-      if (!user) return res.status(404).json({ error: 'User not found' });
-      const safe = { ...user };
-      delete safe.password_hash;
-      return res.json({ user: safe });
+    const activePool = getPool();
+    if (activePool) {
+      const q = await activePool.query('SELECT id, name, email, phone, dob, created_at FROM users WHERE id = $1', [req.user.id]);
+      if (q.rows.length > 0) return res.json({ user: q.rows[0] });
     }
+    
+    let user = memStore.users.find(u => u.id === req.user.id);
+    if (!user) {
+      user = {
+        id: req.user.id,
+        name: req.user.name || (req.user.email ? req.user.email.split('@')[0] : 'Honored Keeper'),
+        email: req.user.email || 'user@memoryvault.local',
+        phone: req.user.phone || '',
+        created_at: new Date().toISOString()
+      };
+      memStore.users.push(user);
+    }
+    const safe = { ...user };
+    delete safe.password_hash;
+    return res.json({ user: safe });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

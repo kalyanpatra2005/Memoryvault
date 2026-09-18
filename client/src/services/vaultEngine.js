@@ -277,6 +277,7 @@ export const vaultEngine = {
           setLocalData('users', localUsers);
           await putIDBStoreItem('users', cachedUser);
         } catch (e) {}
+        this.syncLocalToCloud(data.token, data.user.id).catch(() => {});
         return data;
       }
       if (!res.ok && data && data.error) {
@@ -719,12 +720,15 @@ export const vaultEngine = {
       });
       const data = await safeFetchJson(res);
       if (res.ok && data && (data.media || data.items)) {
-        (data.media || data.items).forEach(item => {
+        for (const item of (data.media || data.items)) {
           addOrMerge({
             ...item,
-            media_url: item.media_url || `/api/media/stream/${item.id}?token=${token}`
+            media_url: item.data_url || item.media_url || `/api/media/stream/${item.id}?token=${token}`
           });
-        });
+          try {
+            await putIDBStoreItem('vault_items', item);
+          } catch (e) {}
+        }
       }
     } catch (e) {}
 
@@ -929,7 +933,12 @@ export const vaultEngine = {
       });
       const data = await safeFetchJson(res);
       if (res.ok && data && data.entries) {
-        data.entries.forEach(entry => addOrMerge(entry));
+        for (const entry of data.entries) {
+          addOrMerge(entry);
+          try {
+            await putIDBStoreItem('diary_entries', entry);
+          } catch (e) {}
+        }
       }
     } catch (e) {}
 
@@ -1065,7 +1074,7 @@ export const vaultEngine = {
       }
 
       for (const item of allMedia) {
-        if (matchesUser(item.user_id, userId) && item.data_url && !item.server_id) {
+        if (item.data_url) {
           try {
             const res = await fetch('/api/media/upload', {
               method: 'POST',
@@ -1105,29 +1114,27 @@ export const vaultEngine = {
       }
 
       for (const entry of allDiaries) {
-        if (matchesUser(entry.user_id, userId) && !entry.server_id) {
-          try {
-            const res = await fetch('/api/diary', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`
-              },
-              body: JSON.stringify({
-                title: entry.title,
-                content: entry.content,
-                mood: entry.mood,
-                image_url: entry.image_url,
-                weather: entry.weather
-              })
-            });
-            const data = await safeFetchJson(res);
-            if (res.ok && data && data.entry) {
-              entry.server_id = data.entry.id;
-              await putIDBStoreItem('diary_entries', entry);
-            }
-          } catch (e) {}
-        }
+        try {
+          const res = await fetch('/api/diary', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              title: entry.title,
+              content: entry.content,
+              mood: entry.mood,
+              image_url: entry.image_url,
+              weather: entry.weather
+            })
+          });
+          const data = await safeFetchJson(res);
+          if (res.ok && data && data.entry) {
+            entry.server_id = data.entry.id;
+            await putIDBStoreItem('diary_entries', entry);
+          }
+        } catch (e) {}
       }
     } catch (e) {}
   }

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { vaultEngine } from '../services/vaultEngine';
 
 const AuthContext = createContext(null);
 
@@ -35,6 +36,7 @@ export const AuthProvider = ({ children }) => {
           if (data && data.user) {
             setUser(data.user);
             localStorage.setItem('vault_user', JSON.stringify(data.user));
+            vaultEngine.syncLocalToCloud(token, data.user.id).catch(() => {});
           }
         })
         .catch(() => {
@@ -55,6 +57,9 @@ export const AuthProvider = ({ children }) => {
     setUser(userData);
     localStorage.setItem('vault_token', newToken);
     localStorage.setItem('vault_user', JSON.stringify(userData));
+    if (userData?.id) {
+      vaultEngine.syncLocalToCloud(newToken, userData.id).catch(() => {});
+    }
   };
 
   const logout = () => {
