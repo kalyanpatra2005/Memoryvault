@@ -108,47 +108,16 @@ export default function MediaVaultPage() {
 
     let uploadedCount = 0;
     try {
-      // 1. Try server upload first if available
-      let serverSuccess = false;
-      try {
-        const formData = new FormData();
-        for (let i = 0; i < files.length; i++) {
-          formData.append('files', files[i]);
-        }
-        if (uploadCaption.trim()) {
-          formData.append('caption', uploadCaption.trim());
-        }
-
-        const res = await fetch('/api/media/upload', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
-          body: formData
-        });
-
-        const data = await safeFetchJson(res);
-        if (res.ok && data && data.media && data.media.length > 0) {
-          serverSuccess = true;
-          uploadedCount = data.media.length;
-        }
-      } catch (serverErr) {
-        console.warn('Server upload unavailable, falling back to local vault:', serverErr);
-      }
-
-      // 2. Fallback to permanent local vaultEngine (IndexedDB)
-      if (!serverSuccess) {
-        for (let i = 0; i < files.length; i++) {
-          await vaultEngine.uploadVaultItem(
-            token,
-            user?.id || 'guest',
-            files[i],
-            uploadCaption.trim() || files[i].name,
-            new Date().toISOString().split('T')[0],
-            ''
-          );
-          uploadedCount++;
-        }
+      for (let i = 0; i < files.length; i++) {
+        await vaultEngine.uploadVaultItem(
+          token,
+          user?.id || 'guest',
+          files[i],
+          uploadCaption.trim() || files[i].name,
+          new Date().toISOString().split('T')[0],
+          ''
+        );
+        uploadedCount++;
       }
 
       setUploadSuccess(`${uploadedCount} memory item(s) permanently vaulted.`);

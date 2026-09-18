@@ -382,41 +382,16 @@ export default function DiaryPage() {
     setSaving(true);
     let savedEntry = null;
 
-    // 1. Try server save first
     try {
-      const res = await authFetch('/api/diary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: title.trim() || 'Untitled Memory',
-          content,
-          mood,
-          weather,
-          image_url: imageUrl.trim() || null
-        })
+      savedEntry = await vaultEngine.saveDiary(token, user?.id || 'guest', {
+        title: title.trim() || 'Untitled Memory',
+        content,
+        mood,
+        weather,
+        image_url: imageUrl.trim() || null
       });
-
-      const data = await safeFetchJson(res);
-      if (res.ok && data && data.entry) {
-        savedEntry = data.entry;
-      }
-    } catch (err) {
-      console.warn('Server diary save failed, falling back to permanent local vault:', err);
-    }
-
-    // 2. Fallback to vaultEngine (IndexedDB / LocalStorage)
-    if (!savedEntry) {
-      try {
-        savedEntry = await vaultEngine.saveDiary(token, user?.id || 'guest', {
-          title: title.trim() || 'Untitled Memory',
-          content,
-          mood,
-          weather,
-          image_url: imageUrl.trim() || null
-        });
-      } catch (e) {
-        console.error('Local vaultEngine save failed:', e);
-      }
+    } catch (e) {
+      console.error('Save diary failed:', e);
     }
 
     if (savedEntry) {

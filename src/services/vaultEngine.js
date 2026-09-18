@@ -729,43 +729,8 @@ export const vaultEngine = {
   },
 
   async uploadVaultItem(token, userId, file, caption, memoryDate, tags, unlockDate) {
-    // 1. Try server upload first if available
-    try {
-      const formData = new FormData();
-      formData.append('files', file);
-      formData.append('caption', caption || '');
-      formData.append('memoryDate', memoryDate || '');
-      formData.append('tags', tags || '');
-      formData.append('source', 'vault');
-
-      const res = await fetch('/api/media/upload', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      });
-      const data = await safeFetchJson(res);
-      if (res.ok && data) {
-        if (data.media && data.media.length > 0) {
-          const item = data.media[0];
-          const isVideo = isVideoMedia(item) || isVideoMedia(file);
-          const mediaType = isVideo ? 'video' : 'photo';
-          return {
-            ...item,
-            type: mediaType,
-            media_type: mediaType,
-            media_url: `/api/media/stream/${item.id}?token=${token}`
-          };
-        }
-        if (data.item) {
-          const isVideo = isVideoMedia(data.item) || isVideoMedia(file);
-          const mediaType = isVideo ? 'video' : 'photo';
-          return { ...data.item, type: mediaType, media_type: mediaType };
-        }
-      }
-    } catch (e) {}
-
-    // 2. Client-side permanent IndexedDB preservation
-    return new Promise((resolve, reject) => {
+    // 1. ALWAYS store into permanent local IndexedDB & LocalStorage FIRST
+    const localItem = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = async () => {
         try {
@@ -789,7 +754,7 @@ export const vaultEngine = {
             created_at: new Date().toISOString()
           };
 
-          // Store full item in IndexedDB (handles high-res photos & videos)
+          // Store full item in IndexedDB (permanent, survives logouts and restarts)
           await putIDBStoreItem('vault_items', newItem);
 
           // Store safe metadata in LocalStorage
@@ -811,6 +776,26 @@ export const vaultEngine = {
       reader.onerror = () => reject(new Error('Failed to read file for vault preservation.'));
       reader.readAsDataURL(file);
     });
+
+    // 2. ALSO send to cloud server for cross-device synchronization
+    if (token) {
+      try {
+        const formData = new FormData();
+        formData.append('files', file);
+        formData.append('caption', caption || '');
+        formData.append('memoryDate', memoryDate || '');
+        formData.append('tags', tags || '');
+        formData.append('source', 'vault');
+
+        await fetch('/api/media/upload', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData
+        });
+      } catch (e) {}
+    }
+
+    return localItem;
   },
 
   async deleteVaultItem(token, id, userId) {
@@ -885,23 +870,7 @@ export const vaultEngine = {
   },
 
   async saveDiary(token, userId, diaryData, existingId = null) {
-    // 1. Try server first
-    try {
-      const url = existingId ? `/api/diary/${existingId}` : '/api/diary';
-      const method = existingId ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(diaryData)
-      });
-      const data = await safeFetchJson(res);
-      if (res.ok && data && data.entry) return data.entry;
-    } catch (e) {}
-
-    // 2. Save locally to IndexedDB & LocalStorage
+    // 1. ALWAYS save locally to IndexedDB & LocalStorage FIRST
     const entryId = existingId ? existingId : Date.now();
     const entryRecord = {
       id: entryId,
@@ -933,6 +902,22 @@ export const vaultEngine = {
       }
       setLocalData('diary_entries', allDiaries);
     } catch (e) {}
+
+    // 2. ALSO send to server for cloud persistence across devices
+    if (token) {
+      try {
+        const url = existingId ? `/api/diary/${existingId}` : '/api/diary';
+        const method = existingId ? 'PUT' : 'POST';
+        await fetch(url, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(diaryData)
+        });
+      } catch (e) {}
+    }
 
     return entryRecord;
   },
