@@ -9,7 +9,7 @@ export const isSupabaseConfigured = Boolean(
   !supabaseUrl.includes('your-project-id')
 );
 
-// Real Supabase Client if configured, or developer mock fallback
+// Real Supabase Client if configured, or Cloud Database Client
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
@@ -18,130 +18,179 @@ export const supabase = isSupabaseConfigured
         detectSessionInUrl: true,
       },
     })
-  : createMockSupabase();
+  : createCloudSupabaseClient();
 
-function createMockSupabase() {
-  let mockUser = null;
-  try {
-    const raw = sessionStorage.getItem('timememory_session_user');
-    if (raw) mockUser = JSON.parse(raw);
-  } catch (e) {}
+export function createCloudSupabaseClient() {
+  const getSessionToken = () => {
+    try {
+      return (
+        localStorage.getItem('timememory_session_token') ||
+        sessionStorage.getItem('timememory_session_token') ||
+        ''
+      );
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const getCachedUser = () => {
+    try {
+      const raw =
+        localStorage.getItem('timememory_session_user') ||
+        sessionStorage.getItem('timememory_session_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const saveSession = (user, token) => {
+    try {
+      if (token) {
+        localStorage.setItem('timememory_session_token', token);
+        sessionStorage.setItem('timememory_session_token', token);
+      }
+      if (user) {
+        localStorage.setItem('timememory_session_user', JSON.stringify(user));
+        sessionStorage.setItem('timememory_session_user', JSON.stringify(user));
+      }
+    } catch (e) {}
+  };
+
+  const clearSession = () => {
+    try {
+      localStorage.removeItem('timememory_session_token');
+      sessionStorage.removeItem('timememory_session_token');
+      localStorage.removeItem('timememory_session_user');
+      sessionStorage.removeItem('timememory_session_user');
+    } catch (e) {}
+  };
 
   const authListeners = new Set();
+  const notifyAuth = (event, session) => {
+    authListeners.forEach((fn) => {
+      try {
+        fn(event, session);
+      } catch (err) {
+        console.error('Auth listener error:', err);
+      }
+    });
+  };
 
   return {
     auth: {
       async getSession() {
-        return { data: { session: mockUser ? { user: mockUser } : null }, error: null };
+        const token = getSessionToken();
+        const user = getCachedUser();
+        if (!token) {
+          return { data: { session: null }, error: null };
+        }
+        return {
+          data: {
+            session: {
+              access_token: token,
+              token,
+              user
+            }
+          },
+          error: null
+        };
       },
+
       async getUser() {
-        return { data: { user: mockUser }, error: null };
+        const user = getCachedUser();
+        const token = getSessionToken();
+        if (!token || !user) {
+          return { data: { user: null }, error: null };
+        }
+        return { data: { user }, error: null };
       },
+
       async signUp({ email, password, options }) {
         const cleanEmail = (email || '').trim().toLowerCase();
-        const id = 'mock-' + Math.random().toString(36).substring(2, 9);
-        const defaultSettings = {
-          theme: 'dark',
-          fontStyle: 'serif',
-          memoryView: 'grid',
-          autoLock: 'never',
-          defaultCategory: 'Personal',
-          soundEnabled: true
-        };
-        mockUser = {
-          id,
-          email: cleanEmail,
-          user_metadata: {
-            full_name: options?.data?.full_name || cleanEmail.split('@')[0],
-            settings: defaultSettings,
-          },
-        };
         try {
-          localStorage.setItem(`vault_user_${cleanEmail}`, JSON.stringify(mockUser));
-          localStorage.setItem(`vault_settings_${cleanEmail}`, JSON.stringify(defaultSettings));
-          sessionStorage.setItem('timememory_session_user', JSON.stringify(mockUser));
-        } catch (e) {}
-        authListeners.forEach((fn) => fn('SIGNED_IN', { user: mockUser }));
-        return { data: { user: mockUser, session: { user: mockUser } }, error: null };
-      },
-      async signInWithPassword({ email, password }) {
-        if (!email || !password) {
-          return { data: { user: null, session: null }, error: { message: 'Email and password required' } };
-        }
-        const cleanEmail = (email || '').trim().toLowerCase();
-        
-        // Restore permanently stored user data & settings
-        let savedUser = null;
-        try {
-          const rawUser = localStorage.getItem(`vault_user_${cleanEmail}`);
-          if (rawUser) savedUser = JSON.parse(rawUser);
-        } catch (e) {}
-
-        let savedSettings = {
-          theme: 'dark',
-          fontStyle: 'serif',
-          memoryView: 'grid',
-          autoLock: 'never',
-          defaultCategory: 'Personal',
-          soundEnabled: true
-        };
-        try {
-          const rawSettings = localStorage.getItem(`vault_settings_${cleanEmail}`);
-          if (rawSettings) {
-            savedSettings = { ...savedSettings, ...JSON.parse(rawSettings) };
+          const res = await fetch('/api/auth/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: cleanEmail, password, options })
+          });
+          const json = await res.json();
+          if (!res.ok) {
+            return { data: { user: null, session: null }, error: json.error ? { message: json.error } : json };
           }
-        } catch (e) {}
-
-        mockUser = {
-          id: savedUser?.id || ('user-' + btoa(cleanEmail).substring(0, 10).toLowerCase()),
-          email: cleanEmail,
-          user_metadata: {
-            full_name: savedUser?.user_metadata?.full_name || cleanEmail.split('@')[0],
-            settings: savedSettings,
-            ...(savedUser?.user_metadata || {})
-          },
-        };
-
-        try {
-          localStorage.setItem(`vault_user_${cleanEmail}`, JSON.stringify(mockUser));
-          sessionStorage.setItem('timememory_session_user', JSON.stringify(mockUser));
-        } catch (e) {}
-        authListeners.forEach((fn) => fn('SIGNED_IN', { user: mockUser }));
-        return { data: { user: mockUser, session: { user: mockUser } }, error: null };
+          saveSession(json.user, json.token);
+          notifyAuth('SIGNED_IN', json.session || { user: json.user, access_token: json.token });
+          return { data: { user: json.user, session: json.session || { user: json.user, access_token: json.token } }, error: null };
+        } catch (err) {
+          return { data: { user: null, session: null }, error: { message: err.message } };
+        }
       },
-      async signOut() {
-        mockUser = null;
+
+      async signInWithPassword({ email, password }) {
+        const cleanEmail = (email || '').trim().toLowerCase();
         try {
-          sessionStorage.removeItem('timememory_session_user');
-        } catch (e) {}
-        authListeners.forEach((fn) => fn('SIGNED_OUT', null));
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: cleanEmail, password })
+          });
+          const json = await res.json();
+          if (!res.ok) {
+            return { data: { user: null, session: null }, error: json.error ? { message: json.error } : json };
+          }
+          saveSession(json.user, json.token);
+          notifyAuth('SIGNED_IN', json.session || { user: json.user, access_token: json.token });
+          return { data: { user: json.user, session: json.session || { user: json.user, access_token: json.token } }, error: null };
+        } catch (err) {
+          return { data: { user: null, session: null }, error: { message: err.message } };
+        }
+      },
+
+      async signOut() {
+        clearSession();
+        notifyAuth('SIGNED_OUT', null);
         return { error: null };
       },
+
       async resetPasswordForEmail(email) {
-        return { data: {}, error: null };
-      },
-      async updateUser({ password, data }) {
-        if (mockUser) {
-          if (!mockUser.user_metadata) mockUser.user_metadata = {};
-          if (data?.full_name) {
-            mockUser.user_metadata.full_name = data.full_name;
-          }
-          if (data?.settings) {
-            mockUser.user_metadata.settings = {
-              ...(mockUser.user_metadata.settings || {}),
-              ...data.settings
-            };
-            try {
-              localStorage.setItem(`vault_settings_${mockUser.email}`, JSON.stringify(mockUser.user_metadata.settings));
-            } catch (e) {}
-          }
-          try {
-            localStorage.setItem(`vault_user_${mockUser.email}`, JSON.stringify(mockUser));
-            sessionStorage.setItem('timememory_session_user', JSON.stringify(mockUser));
-          } catch (e) {}
+        try {
+          const res = await fetch('/api/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: email })
+          });
+          const json = await res.json();
+          return { data: json, error: res.ok ? null : { message: json.error } };
+        } catch (err) {
+          return { data: null, error: { message: err.message } };
         }
-        return { data: { user: mockUser }, error: null };
       },
+
+      async updateUser({ password, data }) {
+        const token = getSessionToken();
+        try {
+          const res = await fetch('/api/auth/update-user', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({ password, data })
+          });
+          const json = await res.json();
+          if (!res.ok) {
+            return { data: { user: null }, error: json.error ? { message: json.error } : json };
+          }
+          if (json.user) {
+            saveSession(json.user, json.token || token);
+            notifyAuth('USER_UPDATED', { user: json.user, access_token: json.token || token });
+          }
+          return { data: { user: json.user }, error: null };
+        } catch (err) {
+          return { data: { user: null }, error: { message: err.message } };
+        }
+      },
+
       onAuthStateChange(callback) {
         authListeners.add(callback);
         return {
@@ -149,242 +198,295 @@ function createMockSupabase() {
             subscription: {
               unsubscribe() {
                 authListeners.delete(callback);
-              },
-            },
-          },
+              }
+            }
+          }
         };
-      },
+      }
     },
 
     from(table) {
       return {
         select(cols = '*') {
-          let filters = [];
-          let sortField = null;
-          let sortAscending = true;
+          const filters = {};
+          let orderBy = null;
+          let orderAsc = true;
+          let limitCount = null;
 
           const queryBuilder = {
             eq(field, val) {
-              filters.push((r) => r[field] === val);
+              filters[field] = val;
               return queryBuilder;
             },
             order(field, { ascending = true } = {}) {
-              sortField = field;
-              sortAscending = ascending;
+              orderBy = field;
+              orderAsc = ascending;
+              return queryBuilder;
+            },
+            limit(n) {
+              limitCount = n;
               return queryBuilder;
             },
             async single() {
               const res = await queryBuilder.execute();
+              if (res.error) return { data: null, error: res.error };
               return { data: res.data?.[0] || null, error: null };
             },
-            async then(resolve) {
-              const res = await queryBuilder.execute();
-              resolve(res);
+            async then(resolve, reject) {
+              try {
+                const res = await queryBuilder.execute();
+                resolve(res);
+              } catch (err) {
+                if (reject) reject(err);
+                else resolve({ data: null, error: { message: err.message } });
+              }
             },
             async execute() {
-              let items = getMockTable(table);
-              for (const f of filters) {
-                items = items.filter(f);
+              const token = getSessionToken();
+              const queryParams = new URLSearchParams();
+              for (const [k, v] of Object.entries(filters)) {
+                queryParams.append(`eq_${k}`, v);
               }
-              if (sortField) {
-                items.sort((a, b) => {
-                  if (a[sortField] < b[sortField]) return sortAscending ? -1 : 1;
-                  if (a[sortField] > b[sortField]) return sortAscending ? 1 : -1;
-                  return 0;
-                });
+              if (orderBy) {
+                queryParams.append('order_by', orderBy);
+                queryParams.append('order_asc', String(orderAsc));
               }
-              return { data: items, error: null };
+              if (limitCount) {
+                queryParams.append('limit', String(limitCount));
+              }
+
+              const res = await fetch(`/api/db/${table}?${queryParams.toString()}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+              });
+              if (!res.ok) {
+                const errJson = await res.json().catch(() => ({ error: { message: `Query failed with status ${res.status}` } }));
+                return { data: null, error: errJson.error || errJson };
+              }
+              const json = await res.json();
+              return { data: json.data || [], error: null };
             }
           };
 
           return queryBuilder;
         },
+
         insert(records) {
           const list = Array.isArray(records) ? records : [records];
-          const current = getMockTable(table);
-          const withIds = list.map((r) => ({
-            id: r.id || 'rec-' + Math.random().toString(36).substring(2, 9),
-            created_at: new Date().toISOString(),
-            ...r,
-          }));
-          saveMockTable(table, [...withIds, ...current]);
           const builder = {
-            data: withIds,
-            error: null,
             select(cols) {
-              return {
-                ...builder,
-                async single() {
-                  return { data: withIds[0] || null, error: null };
-                },
-                async then(resolve, reject) {
-                  resolve({ data: withIds, error: null });
-                }
-              };
-            },
-            async single() {
-              return { data: withIds[0] || null, error: null };
-            },
-            async then(resolve, reject) {
-              resolve({ data: withIds, error: null });
-            }
-          };
-          return builder;
-        },
-        update(updates) {
-          const filters = [];
-          const builder = {
-            eq(field, val) {
-              filters.push((r) => r[field] === val);
               return builder;
             },
-            execute() {
-              const current = getMockTable(table);
-              const updated = current.map((r) => {
-                if (filters.length > 0 && filters.every((f) => f(r))) {
-                  return { ...r, ...updates, updated_at: new Date().toISOString() };
-                }
-                return r;
-              });
-              saveMockTable(table, updated);
-              const matched = updated.filter((r) => filters.length > 0 && filters.every((f) => f(r)));
-              return { data: matched, error: null };
-            },
-            select(cols) {
-              return {
-                eq(field, val) {
-                  filters.push((r) => r[field] === val);
-                  return this;
-                },
-                async single() {
-                  const res = builder.execute();
-                  return { data: res.data?.[0] || null, error: null };
-                },
-                async then(resolve, reject) {
-                  try {
-                    const res = builder.execute();
-                    resolve(res);
-                  } catch (err) {
-                    if (reject) reject(err);
-                    else resolve({ data: null, error: err });
-                  }
-                }
-              };
-            },
             async single() {
-              const res = builder.execute();
+              const res = await builder.execute();
+              if (res.error) return { data: null, error: res.error };
               return { data: res.data?.[0] || null, error: null };
             },
             async then(resolve, reject) {
               try {
-                const res = builder.execute();
+                const res = await builder.execute();
                 resolve(res);
               } catch (err) {
                 if (reject) reject(err);
-                else resolve({ data: null, error: err });
+                else resolve({ data: null, error: { message: err.message } });
               }
+            },
+            async execute() {
+              const token = getSessionToken();
+              const res = await fetch(`/api/db/${table}`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(token ? { Authorization: `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify(list)
+              });
+              if (!res.ok) {
+                const errJson = await res.json().catch(() => ({ error: { message: `Insert failed with status ${res.status}` } }));
+                return { data: null, error: errJson.error || errJson };
+              }
+              const json = await res.json();
+              return { data: json.data || [], error: null };
             }
           };
           return builder;
         },
-        delete() {
-          const filters = [];
+
+        upsert(records) {
+          return this.insert(records);
+        },
+
+        update(updates) {
+          const filters = {};
           const builder = {
             eq(field, val) {
-              filters.push((r) => r[field] === val);
+              filters[field] = val;
               return builder;
             },
-            execute() {
-              const current = getMockTable(table);
-              const remaining = current.filter((r) => !filters.every((f) => f(r)));
-              saveMockTable(table, remaining);
-              return { data: true, error: null };
-            },
             select(cols) {
-              return {
-                eq(field, val) {
-                  filters.push((r) => r[field] === val);
-                  return this;
-                },
-                async then(resolve, reject) {
-                  try {
-                    const res = builder.execute();
-                    resolve(res);
-                  } catch (err) {
-                    if (reject) reject(err);
-                    else resolve({ data: null, error: err });
-                  }
-                }
-              };
+              return builder;
+            },
+            async single() {
+              const res = await builder.execute();
+              if (res.error) return { data: null, error: res.error };
+              return { data: res.data?.[0] || null, error: null };
             },
             async then(resolve, reject) {
               try {
-                const res = builder.execute();
+                const res = await builder.execute();
                 resolve(res);
               } catch (err) {
                 if (reject) reject(err);
-                else resolve({ data: null, error: err });
+                else resolve({ data: null, error: { message: err.message } });
               }
+            },
+            async execute() {
+              const token = getSessionToken();
+              const queryParams = new URLSearchParams();
+              for (const [k, v] of Object.entries(filters)) {
+                queryParams.append(`eq_${k}`, v);
+              }
+
+              const res = await fetch(`/api/db/${table}?${queryParams.toString()}`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(token ? { Authorization: `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify(updates)
+              });
+              if (!res.ok) {
+                const errJson = await res.json().catch(() => ({ error: { message: `Update failed with status ${res.status}` } }));
+                return { data: null, error: errJson.error || errJson };
+              }
+              const json = await res.json();
+              return { data: json.data || [], error: null };
             }
           };
           return builder;
         },
+
+        delete() {
+          const filters = {};
+          const builder = {
+            eq(field, val) {
+              filters[field] = val;
+              return builder;
+            },
+            select(cols) {
+              return builder;
+            },
+            async then(resolve, reject) {
+              try {
+                const res = await builder.execute();
+                resolve(res);
+              } catch (err) {
+                if (reject) reject(err);
+                else resolve({ data: null, error: { message: err.message } });
+              }
+            },
+            async execute() {
+              const token = getSessionToken();
+              const queryParams = new URLSearchParams();
+              for (const [k, v] of Object.entries(filters)) {
+                queryParams.append(`eq_${k}`, v);
+              }
+
+              const res = await fetch(`/api/db/${table}?${queryParams.toString()}`, {
+                method: 'DELETE',
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+              });
+              if (!res.ok) {
+                const errJson = await res.json().catch(() => ({ error: { message: `Delete failed with status ${res.status}` } }));
+                return { data: null, error: errJson.error || errJson };
+              }
+              return { data: true, error: null };
+            }
+          };
+          return builder;
+        }
       };
     },
+
     storage: {
       from(bucket) {
         return {
           async upload(path, file) {
+            const token = getSessionToken();
             const dataUrl = await fileToDataUrl(file);
-            try {
-              localStorage.setItem('timememory_storage_' + path, dataUrl);
-            } catch (e) {}
-            try {
-              sessionStorage.setItem('timememory_storage_' + path, dataUrl);
-            } catch (e) {}
+            const res = await fetch('/api/storage/upload', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {})
+              },
+              body: JSON.stringify({
+                path,
+                data_url: dataUrl,
+                file_name: file?.name || 'media',
+                mime_type: file?.type || 'image/jpeg',
+                size_bytes: file?.size || 0,
+                file_type: file?.type?.startsWith('video/') ? 'video' : 'photo'
+              })
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+              return { data: null, error: err };
+            }
             return { data: { path }, error: null };
           },
+
           getPublicUrl(path) {
-            let stored = '';
+            const token = getSessionToken();
+            const publicUrl = `/api/storage/file?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token)}`;
+            return { data: { publicUrl } };
+          },
+
+          async createSignedUrl(path, expiresIn = 3600) {
+            const token = getSessionToken();
             try {
-              stored = localStorage.getItem('timememory_storage_' + path) || sessionStorage.getItem('timememory_storage_' + path) || '';
-            } catch (e) {}
-            return { data: { publicUrl: stored } };
+              const res = await fetch(`/api/storage/signed-url?path=${encodeURIComponent(path)}&expiresIn=${expiresIn}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+              });
+              if (!res.ok) {
+                return { data: null, error: new Error('Failed to create signed URL') };
+              }
+              const json = await res.json();
+              return { data: { signedUrl: json.data?.signedUrl }, error: null };
+            } catch (err) {
+              return { data: null, error: err };
+            }
           },
+
           async remove(paths) {
-            paths.forEach((p) => {
-              try {
-                localStorage.removeItem('timememory_storage_' + p);
-                sessionStorage.removeItem('timememory_storage_' + p);
-              } catch (e) {}
-            });
-            return { data: true, error: null };
-          },
+            const token = getSessionToken();
+            try {
+              const res = await fetch('/api/storage/remove', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(token ? { Authorization: `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({ paths })
+              });
+              if (!res.ok) {
+                const err = await res.json().catch(() => ({ error: 'Remove failed' }));
+                return { data: null, error: err };
+              }
+              return { data: true, error: null };
+            } catch (err) {
+              return { data: null, error: err };
+            }
+          }
         };
-      },
-    },
+      }
+    }
   };
-}
-
-function getMockTable(name) {
-  try {
-    const raw = localStorage.getItem('timememory_db_' + name) || sessionStorage.getItem('timememory_db_' + name);
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-function saveMockTable(name, list) {
-  try {
-    localStorage.setItem('timememory_db_' + name, JSON.stringify(list));
-    sessionStorage.setItem('timememory_db_' + name, JSON.stringify(list));
-  } catch (e) {}
 }
 
 function fileToDataUrl(file) {
   return new Promise((resolve) => {
     if (!file) return resolve('');
+    if (typeof file === 'string') return resolve(file);
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = () => resolve('');

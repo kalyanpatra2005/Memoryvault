@@ -1,5 +1,25 @@
 import { supabase } from './supabaseClient';
 
+export async function resolveMediaUrl(filePath) {
+  if (!filePath) return '';
+  if (filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('data:')) {
+    return filePath;
+  }
+  try {
+    const { data: signedData, error: signedErr } = await supabase.storage
+      .from('memory-media')
+      .createSignedUrl(filePath, 3600);
+    if (!signedErr && signedData?.signedUrl) {
+      return signedData.signedUrl;
+    }
+  } catch (e) {}
+
+  const { data: publicData } = supabase.storage
+    .from('memory-media')
+    .getPublicUrl(filePath);
+  return publicData?.publicUrl || filePath;
+}
+
 export const memoryService = {
   // =========================================================================
   // 1. MEMORIES & PHOTOS / VIDEOS
@@ -30,16 +50,16 @@ export const memoryService = {
           .eq('user_id', user.id);
 
         if (mediaItems) {
-          mediaItems.forEach(item => {
+          for (const item of mediaItems) {
             if (item.memory_id) {
               if (!mediaMap[item.memory_id]) mediaMap[item.memory_id] = [];
-              const { data } = supabase.storage.from('memory-media').getPublicUrl(item.file_path);
+              const url = await resolveMediaUrl(item.file_path);
               mediaMap[item.memory_id].push({
                 ...item,
-                url: data?.publicUrl || item.file_path
+                url: url || item.data_url || item.file_path
               });
             }
-          });
+          }
         }
       } catch (e) {
         console.error('Media fetch warning', e);
@@ -94,13 +114,15 @@ export const memoryService = {
       .eq('memory_id', id)
       .eq('user_id', user.id);
 
-    const mediaWithUrls = (mediaItems || []).map(item => {
-      const { data: storageData } = supabase.storage.from('memory-media').getPublicUrl(item.file_path);
-      return {
-        ...item,
-        url: storageData?.publicUrl || item.file_path
-      };
-    });
+    const mediaWithUrls = await Promise.all(
+      (mediaItems || []).map(async (item) => {
+        const url = await resolveMediaUrl(item.file_path);
+        return {
+          ...item,
+          url: url || item.data_url || item.file_path
+        };
+      })
+    );
 
     return {
       ...data,
@@ -269,16 +291,16 @@ export const memoryService = {
           .eq('user_id', user.id);
 
         if (mediaItems) {
-          mediaItems.forEach(item => {
+          for (const item of mediaItems) {
             if (item.diary_id) {
               if (!mediaMap[item.diary_id]) mediaMap[item.diary_id] = [];
-              const { data } = supabase.storage.from('memory-media').getPublicUrl(item.file_path);
+              const url = await resolveMediaUrl(item.file_path);
               mediaMap[item.diary_id].push({
                 ...item,
-                url: data?.publicUrl || item.file_path
+                url: url || item.data_url || item.file_path
               });
             }
-          });
+          }
         }
       } catch (e) {}
     }
@@ -319,13 +341,15 @@ export const memoryService = {
       .eq('diary_id', id)
       .eq('user_id', user.id);
 
-    const mediaWithUrls = (mediaItems || []).map(item => {
-      const { data: storageData } = supabase.storage.from('memory-media').getPublicUrl(item.file_path);
-      return {
-        ...item,
-        url: storageData?.publicUrl || item.file_path
-      };
-    });
+    const mediaWithUrls = await Promise.all(
+      (mediaItems || []).map(async (item) => {
+        const url = await resolveMediaUrl(item.file_path);
+        return {
+          ...item,
+          url: url || item.data_url || item.file_path
+        };
+      })
+    );
 
     return {
       ...data,
@@ -529,18 +553,19 @@ export const memoryService = {
     if (error) throw error;
     if (!data) return [];
 
-    // Attach public URLs for image_path
-    return data.map(item => {
-      let imageUrl = null;
-      if (item.image_path) {
-        const { data: storageData } = supabase.storage.from('memory-media').getPublicUrl(item.image_path);
-        imageUrl = storageData?.publicUrl || item.image_path;
-      }
-      return {
-        ...item,
-        imageUrl
-      };
-    });
+    // Attach URLs for image_path
+    return Promise.all(
+      data.map(async (item) => {
+        let imageUrl = null;
+        if (item.image_path) {
+          imageUrl = await resolveMediaUrl(item.image_path);
+        }
+        return {
+          ...item,
+          imageUrl: imageUrl || item.image_path
+        };
+      })
+    );
   },
 
   async createTimeCapsule({ title, message, target_date, file }) {

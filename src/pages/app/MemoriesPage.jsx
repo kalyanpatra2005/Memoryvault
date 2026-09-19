@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { memoryService } from '../../services/memoryService';
 import { 
   Search, Filter, Plus, Grid, List, Calendar, 
@@ -15,6 +15,7 @@ const CATEGORIES = ['All', 'Personal', 'Family', 'Travel', 'Milestone', 'Work', 
 export default function MemoriesPage({ onOpenAddModal, onSelectMemory }) {
   const [memories, setMemories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
   const [sortOrder, setSortOrder] = useState('desc'); // 'desc' | 'asc'
@@ -26,6 +27,7 @@ export default function MemoriesPage({ onOpenAddModal, onSelectMemory }) {
 
   const loadMemories = async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await memoryService.getMemories({
         search,
@@ -34,6 +36,7 @@ export default function MemoriesPage({ onOpenAddModal, onSelectMemory }) {
       setMemories(data);
     } catch (err) {
       console.error('Failed to load memories', err);
+      setError("Couldn't load your memories. Try again.");
     } finally {
       setLoading(false);
     }
@@ -54,7 +57,7 @@ export default function MemoriesPage({ onOpenAddModal, onSelectMemory }) {
             Memories
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {memories.length} {memories.length === 1 ? 'moment' : 'moments'} preserved in your vault
+            {loading ? 'Connecting to vault...' : error ? 'Sync error' : `${memories.length} ${memories.length === 1 ? 'moment' : 'moments'} preserved in your vault`}
           </p>
         </div>
 
@@ -157,6 +160,21 @@ export default function MemoriesPage({ onOpenAddModal, onSelectMemory }) {
           <Skeleton variant="card" className="h-64" />
           <Skeleton variant="card" className="h-64" />
           <Skeleton variant="card" className="h-64" />
+        </div>
+      ) : error ? (
+        <div className="p-12 bg-white dark:bg-slate-900 rounded-2xl border border-red-200 dark:border-red-900/40 text-center shadow-sm">
+          <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400 mx-auto flex items-center justify-center mb-4">
+            <X className="w-6 h-6" />
+          </div>
+          <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">
+            Couldn't load your memories. Try again.
+          </h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-6">
+            We encountered a network issue reaching your vault. Your memories are safely preserved in the cloud.
+          </p>
+          <Button onClick={loadMemories} variant="primary">
+            Retry Loading
+          </Button>
         </div>
       ) : sortedMemories.length === 0 ? (
         <div className="p-12 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-center">

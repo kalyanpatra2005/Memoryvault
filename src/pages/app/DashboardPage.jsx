@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { memoryService } from '../../services/memoryService';
 import { 
@@ -20,6 +20,7 @@ export default function DashboardPage({ onOpenAddModal, onSelectMemory, onNaviga
   });
   const [recentMemories, setRecentMemories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -27,6 +28,7 @@ export default function DashboardPage({ onOpenAddModal, onSelectMemory, onNaviga
 
   const loadDashboardData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const [statsData, memories] = await Promise.all([
         memoryService.getStatistics(),
@@ -36,6 +38,7 @@ export default function DashboardPage({ onOpenAddModal, onSelectMemory, onNaviga
       setRecentMemories(memories.slice(0, 6));
     } catch (err) {
       console.error('Failed to load dashboard data', err);
+      setError("Couldn't load your memories. Try again.");
     } finally {
       setLoading(false);
     }
@@ -170,6 +173,18 @@ export default function DashboardPage({ onOpenAddModal, onSelectMemory, onNaviga
             <Skeleton variant="card" className="h-64" />
             <Skeleton variant="card" className="h-64" />
             <Skeleton variant="card" className="h-64" />
+          </div>
+        ) : error ? (
+          <div className="p-8 bg-white dark:bg-slate-900 rounded-2xl border border-red-200 dark:border-red-900/40 text-center shadow-sm">
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
+              Couldn't load your memories. Try again.
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-4">
+              Your moments are safely in the cloud. Please verify connection and retry.
+            </p>
+            <Button onClick={loadDashboardData} variant="primary" size="sm">
+              Retry
+            </Button>
           </div>
         ) : recentMemories.length === 0 ? (
           <div className="p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-center">
