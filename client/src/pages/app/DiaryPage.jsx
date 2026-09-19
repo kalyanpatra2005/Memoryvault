@@ -141,19 +141,22 @@ export default function DiaryPage() {
 
   const handleDelete = async () => {
     if (!deleteConfirmId) return;
+    const targetId = deleteConfirmId;
     try {
-      await memoryService.deleteDiaryEntry(deleteConfirmId);
+      await memoryService.deleteDiaryEntry(targetId);
       setDeleteConfirmId(null);
-      if (editingId === deleteConfirmId) {
+      if (editingId === targetId) {
         setEntryTitle('');
         setEntryContent('');
         setEditingId(null);
         setFilePreviews([]);
         setSelectedFiles([]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
-      loadDiaryEntries();
+      await loadDiaryEntries(false);
     } catch (err) {
       console.error('Delete diary error', err);
+      alert('Unable to delete entry. Please try again.');
     }
   };
 
@@ -416,12 +419,25 @@ export default function DiaryPage() {
                         year: 'numeric'
                       })}
                     </span>
-                    {entry.media && entry.media.length > 0 && (
-                      <span className="text-[11px] text-stone-400 flex items-center gap-1">
-                        <Camera className="w-3 h-3" />
-                        <span>{entry.media.length}</span>
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {entry.media && entry.media.length > 0 && (
+                        <span className="text-[11px] text-stone-400 flex items-center gap-1">
+                          <Camera className="w-3 h-3" />
+                          <span>{entry.media.length}</span>
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteConfirmId(entry.id);
+                        }}
+                        className="p-1 text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition"
+                        title="Delete this diary entry"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   {entry.title && (

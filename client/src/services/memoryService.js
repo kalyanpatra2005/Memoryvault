@@ -1,4 +1,4 @@
-﻿import { supabase } from './supabaseClient';
+import { supabase } from './supabaseClient';
 
 export const memoryService = {
   // =========================================================================
@@ -421,20 +421,46 @@ export const memoryService = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Authentication required');
 
-    const { data: mediaItems } = await supabase
-      .from('media')
-      .select('file_path')
-      .eq('diary_id', id)
-      .eq('user_id', user.id);
+    try {
+      const { data: mediaItems } = await supabase
+        .from('media')
+        .select('file_path')
+        .eq('diary_id', id)
+        .eq('user_id', user.id);
 
-    if (mediaItems && mediaItems.length > 0) {
-      const paths = mediaItems.map(m => m.file_path);
-      await supabase.storage.from('memory-media').remove(paths);
+      if (mediaItems && mediaItems.length > 0) {
+        const paths = mediaItems.map(m => m.file_path).filter(Boolean);
+        if (paths.length > 0) {
+          await supabase.storage.from('memory-media').remove(paths);
+        }
+      }
+
+      await supabase.from('media').delete().eq('diary_id', id);
+    } catch (mediaErr) {
+      console.warn('Non-critical error clearing diary media', mediaErr);
     }
 
-    await supabase.from('media').delete().eq('diary_id', id);
-    const { error } = await supabase.from('diary_entries').delete().eq('id', id).eq('user_id', user.id);
+    const { error } = await supabase
+      .from('diary_entries')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id);
+
     if (error) throw error;
+
+    // Also sync delete with backend API if available
+    try {
+      const token = localStorage.getItem('timememory_session_token') || sessionStorage.getItem('timememory_session_token');
+      if (token) {
+        await fetch(`/api/diary/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } catch (e) {
+      // Non-critical backend sync
+    }
+
     return true;
   },
 
