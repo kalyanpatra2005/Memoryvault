@@ -410,7 +410,7 @@ export function createCloudSupabaseClient() {
     storage: {
       from(bucket) {
         return {
-          async upload(path, file) {
+          async upload(path, file, options = {}) {
             const token = getSessionToken();
             const dataUrl = await fileToDataUrl(file);
             const res = await fetch('/api/storage/upload', {
@@ -425,14 +425,16 @@ export function createCloudSupabaseClient() {
                 file_name: file?.name || 'media',
                 mime_type: file?.type || 'image/jpeg',
                 size_bytes: file?.size || 0,
-                file_type: file?.type?.startsWith('video/') ? 'video' : 'photo'
+                file_type: file?.type?.startsWith('video/') ? 'video' : 'photo',
+                memory_id: options?.memory_id || null,
+                diary_id: options?.diary_id || null
               })
             });
             if (!res.ok) {
               const err = await res.json().catch(() => ({ error: 'Upload failed' }));
               return { data: null, error: err };
             }
-            return { data: { path }, error: null };
+            return { data: { path, dataUrl }, error: null };
           },
 
           getPublicUrl(path) {
@@ -451,7 +453,7 @@ export function createCloudSupabaseClient() {
                 return { data: null, error: new Error('Failed to create signed URL') };
               }
               const json = await res.json();
-              return { data: { signedUrl: json.data?.signedUrl }, error: null };
+              return { data: { signedUrl: json.data?.signedUrl || json.signedUrl || json.url }, error: null };
             } catch (err) {
               return { data: null, error: err };
             }
@@ -483,7 +485,7 @@ export function createCloudSupabaseClient() {
   };
 }
 
-function fileToDataUrl(file) {
+export function fileToDataUrl(file) {
   return new Promise((resolve) => {
     if (!file) return resolve('');
     if (typeof file === 'string') return resolve(file);

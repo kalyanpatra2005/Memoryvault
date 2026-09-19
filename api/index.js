@@ -784,6 +784,25 @@ router.post('/db/:table', requireAuth, async (req, res) => {
           item.original_name = item.original_name || item.file_name || 'media';
           item.media_type = item.media_type || item.file_type || 'photo';
           item.file_type = item.file_type || item.media_type || 'photo';
+
+          if (item.file_path) {
+            const existingMedia = await activePool.query(
+              "SELECT * FROM media WHERE file_path = $1 ORDER BY (CASE WHEN data_url IS NOT NULL AND data_url != '' THEN 1 ELSE 0 END) DESC LIMIT 1",
+              [item.file_path]
+            );
+            if (existingMedia.rows.length > 0) {
+              const existingRow = existingMedia.rows[0];
+              if (!item.data_url && existingRow.data_url) {
+                item.data_url = existingRow.data_url;
+              }
+              if (item.memory_id && !existingRow.memory_id) {
+                await activePool.query('UPDATE media SET memory_id = $1 WHERE id = $2', [item.memory_id, existingRow.id]);
+              }
+              if (item.diary_id && !existingRow.diary_id) {
+                await activePool.query('UPDATE media SET diary_id = $1 WHERE id = $2', [item.diary_id, existingRow.id]);
+              }
+            }
+          }
         }
 
         const keys = Object.keys(item).filter(k => validCols.includes(k) && item[k] !== undefined);
@@ -949,6 +968,26 @@ router.post('/storage/upload', requireAuth, async (req, res) => {
     const activePool = getPool();
     const mediaId = 'med_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
     if (activePool) {
+      const existing = await activePool.query(
+        'SELECT id FROM media WHERE file_path = $1 LIMIT 1',
+        [cleanPath]
+      );
+      if (existing.rows.length > 0) {
+        await activePool.query(
+          `UPDATE media SET 
+             data_url = $1, 
+             file_name = COALESCE($2, file_name), 
+             filename = COALESCE($2, filename), 
+             mime_type = COALESCE($3, mime_type), 
+             size_bytes = COALESCE($4, size_bytes),
+             memory_id = COALESCE($5, memory_id),
+             diary_id = COALESCE($6, diary_id)
+           WHERE id = $7`,
+          [data_url, file_name, mime_type, size_bytes, memory_id || null, diary_id || null, existing.rows[0].id]
+        );
+        return res.status(201).json({ data: { path: cleanPath, id: existing.rows[0].id }, error: null });
+      }
+
       await activePool.query(
         `INSERT INTO media (id, user_id, user_email, file_path, file_name, filename, original_name, mime_type, size_bytes, media_type, file_type, data_url, memory_id, diary_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
@@ -1034,7 +1073,10 @@ const handleStorageFile = async (req, res) => {
     }
 
     const q = await activePool.query(
-      'SELECT * FROM media WHERE file_path = $1 OR file_name = $1 OR original_name = $1 ORDER BY id DESC LIMIT 1',
+      `SELECT * FROM media 
+       WHERE file_path = $1 OR file_name = $1 OR original_name = $1 
+       ORDER BY (CASE WHEN data_url IS NOT NULL AND data_url != '' THEN 1 ELSE 0 END) DESC, id DESC 
+       LIMIT 1`,
       [filePath]
     );
 

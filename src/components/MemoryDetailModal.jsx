@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { 
   X, Calendar, MapPin, Tag, Heart, Edit3, Trash2, 
   Share2, Shield, Download, Check
@@ -21,6 +21,7 @@ export default function MemoryDetailModal({
   if (!isOpen || !memory) return null;
 
   const mediaItem = memory.media && memory.media.length > 0 ? memory.media[0] : null;
+  const mediaUrl = mediaItem?.url || mediaItem?.data_url || memory.image_url;
 
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -85,14 +86,19 @@ export default function MemoryDetailModal({
             <div className="bg-slate-100 dark:bg-slate-950 flex items-center justify-center max-h-96 overflow-hidden border-b border-slate-100 dark:border-slate-800">
               {mediaItem.file_type === 'video' ? (
                 <video 
-                  src={mediaItem.url} 
+                  src={mediaUrl} 
                   controls 
                   className="max-h-96 w-full object-contain"
                 />
               ) : (
                 <img 
-                  src={mediaItem.url} 
+                  src={mediaUrl} 
                   alt={memory.title} 
+                  onError={(e) => {
+                    if (mediaItem?.data_url && e.currentTarget.src !== mediaItem.data_url) {
+                      e.currentTarget.src = mediaItem.data_url;
+                    }
+                  }}
                   className="max-h-96 w-full object-contain" 
                 />
               )}

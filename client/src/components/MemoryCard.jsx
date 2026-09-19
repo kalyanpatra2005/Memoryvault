@@ -11,7 +11,7 @@ export default function MemoryCard({
 
   const media = memory.media?.[0];
   const isVideo = media?.file_type === 'video' || (media?.url && /\.(mp4|webm|mov)$/i.test(media.url));
-  const mediaUrl = media?.url;
+  const mediaUrl = media?.url || media?.data_url || memory.image_url;
 
   const formatDate = (val) => {
     if (!val) return '';
@@ -55,6 +55,11 @@ export default function MemoryCard({
                 src={mediaUrl}
                 alt={memory.title}
                 loading="lazy"
+                onError={(e) => {
+                  if (media?.data_url && e.currentTarget.src !== media.data_url) {
+                    e.currentTarget.src = media.data_url;
+                  }
+                }}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
             )

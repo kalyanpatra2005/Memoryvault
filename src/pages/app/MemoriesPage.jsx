@@ -226,8 +226,13 @@ export default function MemoriesPage({ onOpenAddModal, onSelectMemory }) {
                 <div className="flex items-center gap-3.5 min-w-0">
                   {hasMedia ? (
                     <img
-                      src={mediaItem.url}
+                      src={mediaItem.url || mediaItem.data_url || memory.image_url}
                       alt={memory.title}
+                      onError={(e) => {
+                        if (mediaItem?.data_url && e.currentTarget.src !== mediaItem.data_url) {
+                          e.currentTarget.src = mediaItem.data_url;
+                        }
+                      }}
                       className="w-12 h-12 rounded-xl object-cover border border-slate-200 dark:border-slate-700 flex-shrink-0"
                     />
                   ) : (

@@ -1,6 +1,9 @@
 import { supabase } from './supabaseClient';
 
-export async function resolveMediaUrl(filePath) {
+export async function resolveMediaUrl(filePath, dataUrl = null) {
+  if (dataUrl && (dataUrl.startsWith('data:') || dataUrl.startsWith('http'))) {
+    return dataUrl;
+  }
   if (!filePath) return '';
   if (filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('data:')) {
     return filePath;
@@ -53,10 +56,10 @@ export const memoryService = {
           for (const item of mediaItems) {
             if (item.memory_id) {
               if (!mediaMap[item.memory_id]) mediaMap[item.memory_id] = [];
-              const url = await resolveMediaUrl(item.file_path);
+              const url = await resolveMediaUrl(item.file_path, item.data_url);
               mediaMap[item.memory_id].push({
                 ...item,
-                url: url || item.data_url || item.file_path
+                url: item.data_url || url || item.file_path
               });
             }
           }
@@ -116,10 +119,10 @@ export const memoryService = {
 
     const mediaWithUrls = await Promise.all(
       (mediaItems || []).map(async (item) => {
-        const url = await resolveMediaUrl(item.file_path);
+        const url = await resolveMediaUrl(item.file_path, item.data_url);
         return {
           ...item,
-          url: url || item.data_url || item.file_path
+          url: item.data_url || url || item.file_path
         };
       })
     );
@@ -159,9 +162,9 @@ export const memoryService = {
         const cleanFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
         const filePath = `${user.id}/memories/${newMemory.id}/${cleanFileName}`;
 
-        const { error: uploadError } = await supabase.storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
           .from('memory-media')
-          .upload(filePath, f);
+          .upload(filePath, f, { memory_id: newMemory.id });
 
         if (!uploadError) {
           await supabase
@@ -171,7 +174,8 @@ export const memoryService = {
               user_id: user.id,
               file_path: filePath,
               file_type: f.type.startsWith('video/') ? 'video' : 'photo',
-              file_name: f.name
+              file_name: f.name,
+              data_url: uploadData?.dataUrl || null
             });
         }
       }
@@ -201,9 +205,9 @@ export const memoryService = {
       const cleanFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
       const filePath = `${user.id}/memories/${id}/${cleanFileName}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('memory-media')
-        .upload(filePath, newFile);
+        .upload(filePath, newFile, { memory_id: id });
 
       if (!uploadError) {
         await supabase
@@ -213,7 +217,8 @@ export const memoryService = {
             user_id: user.id,
             file_path: filePath,
             file_type: newFile.type.startsWith('video/') ? 'video' : 'photo',
-            file_name: newFile.name
+            file_name: newFile.name,
+            data_url: uploadData?.dataUrl || null
           });
       }
     }
@@ -294,10 +299,10 @@ export const memoryService = {
           for (const item of mediaItems) {
             if (item.diary_id) {
               if (!mediaMap[item.diary_id]) mediaMap[item.diary_id] = [];
-              const url = await resolveMediaUrl(item.file_path);
+              const url = await resolveMediaUrl(item.file_path, item.data_url);
               mediaMap[item.diary_id].push({
                 ...item,
-                url: url || item.data_url || item.file_path
+                url: item.data_url || url || item.file_path
               });
             }
           }
@@ -343,10 +348,10 @@ export const memoryService = {
 
     const mediaWithUrls = await Promise.all(
       (mediaItems || []).map(async (item) => {
-        const url = await resolveMediaUrl(item.file_path);
+        const url = await resolveMediaUrl(item.file_path, item.data_url);
         return {
           ...item,
-          url: url || item.data_url || item.file_path
+          url: item.data_url || url || item.file_path
         };
       })
     );
@@ -386,9 +391,9 @@ export const memoryService = {
           const cleanFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
           const filePath = `${user.id}/diary/${newEntry.id}/${cleanFileName}`;
 
-          const { error: uploadErr } = await supabase.storage
+          const { data: uploadData, error: uploadErr } = await supabase.storage
             .from('memory-media')
-            .upload(filePath, f);
+            .upload(filePath, f, { diary_id: newEntry.id });
 
           if (!uploadErr) {
             await supabase.from('media').insert({
@@ -396,7 +401,8 @@ export const memoryService = {
               user_id: user.id,
               file_path: filePath,
               file_type: (f.type || '').startsWith('video/') ? 'video' : 'photo',
-              file_name: f.name || 'attachment'
+              file_name: f.name || 'attachment',
+              data_url: uploadData?.dataUrl || null
             });
           }
         } catch (mediaErr) {
@@ -450,9 +456,9 @@ export const memoryService = {
           const cleanFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
           const filePath = `${user.id}/diary/${id}/${cleanFileName}`;
 
-          const { error: uploadErr } = await supabase.storage
+          const { data: uploadData, error: uploadErr } = await supabase.storage
             .from('memory-media')
-            .upload(filePath, f);
+            .upload(filePath, f, { diary_id: id });
 
           if (!uploadErr) {
             await supabase.from('media').insert({
@@ -460,7 +466,8 @@ export const memoryService = {
               user_id: user.id,
               file_path: filePath,
               file_type: (f.type || '').startsWith('video/') ? 'video' : 'photo',
-              file_name: f.name || 'attachment'
+              file_name: f.name || 'attachment',
+              data_url: uploadData?.dataUrl || null
             });
           }
         } catch (mediaErr) {
