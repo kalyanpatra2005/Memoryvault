@@ -16,7 +16,7 @@ export default function LoginPage({ onNavigate }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password) {
-      setError('Please provide both email and password.');
+      setError('Please enter your email and password.');
       return;
     }
 
@@ -25,40 +25,39 @@ export default function LoginPage({ onNavigate }) {
 
     try {
       await login({ email: email.trim(), password });
-      onNavigate?.('/dashboard');
+      onNavigate?.('/home');
     } catch (err) {
-      setError(err.message || 'Invalid email or password.');
+      setError(err.message || 'Incorrect email or password.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 transition-colors">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md px-4">
+    <div className="min-h-screen bg-paper-100 dark:bg-paper-950 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 transition-colors">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <button
           onClick={() => onNavigate?.('/')}
-          className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 mb-6 transition"
+          className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-900 dark:hover:text-stone-200 mb-6 transition"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Back to Home</span>
         </button>
 
-        <div className="flex items-center justify-center gap-2 mb-2">
-          <BrandLogo size={28} />
-          <span className="text-xl font-bold text-slate-900 dark:text-slate-100">TimeMemory</span>
+        <div className="flex justify-center mb-4">
+          <BrandLogo size="md" />
         </div>
 
-        <h2 className="text-center text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-          Sign in to your vault
+        <h2 className="text-center font-serif text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
+          Sign In
         </h2>
-        <p className="mt-1 text-center text-xs text-slate-500 dark:text-slate-400">
-          Your private moments are protected with Row Level Security.
+        <p className="mt-1 text-center text-xs text-stone-500 dark:text-stone-400">
+          Enter your email and password to continue
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4">
-        <div className="bg-white dark:bg-slate-900 py-8 px-6 sm:px-10 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800">
+      <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-paper-50 dark:bg-stone-900 py-8 px-6 sm:px-10 rounded-2xl shadow-lg border border-stone-200/90 dark:border-stone-800">
           {error && (
             <div className="flex items-center gap-2 p-3 mb-5 text-xs bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl border border-rose-200 dark:border-rose-900/60">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -68,49 +67,49 @@ export default function LoginPage({ onNavigate }) {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Email address
+              <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
+                Email
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Mail className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full pl-9 pr-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                  placeholder="name@example.com"
+                  className="w-full pl-9 pr-3.5 py-2.5 text-sm bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
                 />
               </div>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
                   Password
                 </label>
                 <button
                   type="button"
                   onClick={() => onNavigate?.('/forgot-password')}
-                  className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                  className="text-xs text-amber-700 dark:text-amber-400 hover:underline"
                 >
                   Forgot password?
                 </button>
               </div>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-9 pr-10 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                  className="w-full pl-9 pr-10 py-2.5 text-sm bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -123,31 +122,31 @@ export default function LoginPage({ onNavigate }) {
                 type="checkbox"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
-                className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700"
+                className="w-4 h-4 rounded text-amber-700 focus:ring-amber-500 border-stone-300 dark:border-stone-700"
               />
-              <label htmlFor="login-remember" className="ml-2 text-xs text-slate-600 dark:text-slate-400">
-                Keep me signed in
+              <label htmlFor="login-remember" className="ml-2 text-xs text-stone-600 dark:text-stone-400 cursor-pointer">
+                Remember me
               </label>
             </div>
 
-            <Button
+            <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-2.5 shadow-sm"
+              className="w-full py-2.5 px-4 bg-amber-800 hover:bg-amber-900 text-white font-semibold rounded-xl text-sm shadow-md transition flex items-center justify-center gap-2"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              <span>Sign In</span>
-            </Button>
+              <span>Sign In &rarr;</span>
+            </button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center text-xs text-slate-600 dark:text-slate-400">
-            Don't have a vault yet?{' '}
+          <div className="mt-6 pt-5 border-t border-stone-200/80 dark:border-stone-800 text-center text-xs text-stone-600 dark:text-stone-400">
+            Don't have an account?{' '}
             <button
               type="button"
               onClick={() => onNavigate?.('/register')}
-              className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+              className="font-semibold text-amber-800 dark:text-amber-400 hover:underline"
             >
-              Create free account
+              Sign Up
             </button>
           </div>
         </div>

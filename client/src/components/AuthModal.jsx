@@ -1,8 +1,7 @@
 ﻿import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, Lock, Mail, User, Eye, EyeOff, Sparkles, AlertCircle, CheckCircle2, Loader2, ArrowRight } from 'lucide-react';
+import { X, Lock, Mail, User, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import BrandLogo from './BrandLogo';
-import Button from './ui/Button';
 
 export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSuccess }) {
   const { login, register, resetPassword } = useAuth();
@@ -30,30 +29,29 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
     try {
       if (mode === 'login') {
         if (!email.trim() || !password) {
-          throw new Error('Please provide both email and password.');
+          throw new Error('Please enter your email and password.');
         }
         await login({ email: email.trim(), password });
         onSuccess?.();
         onClose();
       } else if (mode === 'register') {
-        if (!fullName.trim()) throw new Error('Please enter your full name.');
-        if (!email.trim() || !password) throw new Error('Please provide email and password.');
+        if (!fullName.trim()) throw new Error('Please enter your name.');
+        if (!email.trim() || !password) throw new Error('Please enter email and password.');
         if (password.length < 6) throw new Error('Password must be at least 6 characters.');
         if (password !== confirmPassword) throw new Error('Passwords do not match.');
 
         await register({ fullName: fullName.trim(), email: email.trim(), password });
-        setSuccessMsg('Account created successfully! Welcome to TimeMemory.');
+        setSuccessMsg('Account created successfully!');
         setTimeout(() => {
           onSuccess?.();
           onClose();
-        }, 1200);
+        }, 800);
       } else if (mode === 'forgot') {
-        if (!email.trim()) throw new Error('Please enter your account email.');
+        if (!email.trim()) throw new Error('Please enter your email.');
         await resetPassword(email.trim());
-        setSuccessMsg('Password reset instructions have been sent to your email.');
+        setSuccessMsg('Recovery instructions sent to your email.');
       }
     } catch (err) {
-      console.error('Auth error:', err);
       setError(err.message || 'Authentication failed. Please check your credentials.');
     } finally {
       setLoading(false);
@@ -61,85 +59,77 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-paper-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-2">
-            <BrandLogo size={22} />
-            <span className="font-bold text-slate-900 dark:text-slate-100 text-sm">TimeMemory</span>
-          </div>
+        <div className="flex items-center justify-between px-6 pt-5 pb-2">
+          <BrandLogo size="sm" />
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
+            className="p-1.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-paper-200 dark:hover:bg-stone-800 rounded-lg transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6">
-          <div className="text-center mb-6">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-              {mode === 'login' && 'Sign In to Your Vault'}
-              {mode === 'register' && 'Create Your Memory Vault'}
-              {mode === 'forgot' && 'Reset Vault Password'}
+        <div className="p-6 pt-2">
+          <div className="mb-5">
+            <h2 className="font-serif text-xl font-bold text-stone-900 dark:text-stone-100">
+              {mode === 'login' && 'Sign In'}
+              {mode === 'register' && 'Create Account'}
+              {mode === 'forgot' && 'Reset Password'}
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {mode === 'login' && 'Access your private moments securely from any device.'}
-              {mode === 'register' && 'End-to-end account isolation with PostgreSQL Row Level Security.'}
-              {mode === 'forgot' && 'We will send a secure recovery link to your email.'}
-            </p>
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 p-3 mb-4 text-xs bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl border border-rose-200 dark:border-rose-900/60">
+            <div className="flex items-center gap-2 p-3 mb-4 text-xs bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl border border-rose-200">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {successMsg && (
-            <div className="flex items-center gap-2 p-3 mb-4 text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-200 dark:border-emerald-900/60">
+            <div className="flex items-center gap-2 p-3 mb-4 text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-200">
               <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
               <span>{successMsg}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3.5">
             {mode === 'register' && (
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Full Name
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
+                  Name
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Jane Doe"
-                    className="w-full pl-9 pr-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                    placeholder="Your Name"
+                    className="w-full pl-9 pr-3.5 py-2 text-sm bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
                   />
                 </div>
               </div>
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Email Address
+              <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
+                Email
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Mail className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full pl-9 pr-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                  placeholder="name@example.com"
+                  className="w-full pl-9 pr-3.5 py-2 text-sm bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
                 />
               </div>
             </div>
@@ -147,33 +137,33 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
             {mode !== 'forgot' && (
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label className="text-xs font-semibold text-stone-700 dark:text-stone-300">
                     Password
                   </label>
                   {mode === 'login' && (
                     <button
                       type="button"
                       onClick={() => setMode('forgot')}
-                      className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                      className="text-xs text-amber-700 dark:text-amber-400 hover:underline"
                     >
                       Forgot password?
                     </button>
                   )}
                 </div>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full pl-9 pr-10 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                    className="w-full pl-9 pr-10 py-2 text-sm bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -183,63 +173,63 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
 
             {mode === 'register' && (
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                   Confirm Password
                 </label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full pl-9 pr-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                    className="w-full pl-9 pr-3.5 py-2 text-sm bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
                   />
                 </div>
               </div>
             )}
 
             {mode === 'login' && (
-              <div className="flex items-center">
+              <div className="flex items-center pt-0.5">
                 <input
                   id="modal-remember-me"
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700"
+                  className="w-3.5 h-3.5 rounded text-amber-700 focus:ring-amber-500 border-stone-300 dark:border-stone-700"
                 />
-                <label htmlFor="modal-remember-me" className="ml-2 text-xs text-slate-600 dark:text-slate-400">
-                  Keep me signed in
+                <label htmlFor="modal-remember-me" className="ml-2 text-xs text-stone-600 dark:text-stone-400 cursor-pointer">
+                  Remember me
                 </label>
               </div>
             )}
 
-            <Button
+            <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-2.5 shadow-sm"
+              className="w-full py-2.5 px-4 bg-amber-800 hover:bg-amber-900 text-white font-semibold rounded-xl text-sm shadow transition flex items-center justify-center gap-2 mt-2"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
               <span>
                 {mode === 'login' && 'Sign In'}
                 {mode === 'register' && 'Create Account'}
-                {mode === 'forgot' && 'Send Recovery Email'}
+                {mode === 'forgot' && 'Send Link'}
               </span>
-            </Button>
+            </button>
           </form>
 
           {/* Switch Modes */}
-          <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 text-center text-xs text-slate-600 dark:text-slate-400">
+          <div className="mt-5 pt-4 border-t border-stone-200/80 dark:border-stone-800 text-center text-xs text-stone-600 dark:text-stone-400">
             {mode === 'login' && (
               <p>
-                Don't have a vault yet?{' '}
+                Don't have an account?{' '}
                 <button
                   type="button"
                   onClick={() => { setError(''); setSuccessMsg(''); setMode('register'); }}
-                  className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                  className="font-semibold text-amber-800 dark:text-amber-400 hover:underline"
                 >
-                  Create one now
+                  Sign Up
                 </button>
               </p>
             )}
@@ -250,9 +240,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
                 <button
                   type="button"
                   onClick={() => { setError(''); setSuccessMsg(''); setMode('login'); }}
-                  className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                  className="font-semibold text-amber-800 dark:text-amber-400 hover:underline"
                 >
-                  Sign in
+                  Sign In
                 </button>
               </p>
             )}
@@ -261,7 +251,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSu
               <button
                 type="button"
                 onClick={() => { setError(''); setSuccessMsg(''); setMode('login'); }}
-                className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                className="font-semibold text-amber-800 dark:text-amber-400 hover:underline"
               >
                 &larr; Back to sign in
               </button>
