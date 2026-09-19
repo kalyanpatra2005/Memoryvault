@@ -1,64 +1,51 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --bg-primary: #f8fafc;
-    --bg-surface: #ffffff;
-    --text-primary: #0f172a;
-    --text-secondary: #475569;
-    --border-subtle: #e2e8f0;
-  }
-
-  .dark {
-    --bg-primary: #090d16;
-    --bg-surface: #111827;
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
-    --border-subtle: #1f2937;
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
-    font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    @apply bg-slate-50 text-slate-900 dark:bg-[#090d16] dark:text-slate-100 antialiased min-h-screen transition-colors duration-150;
+    @apply bg-paper-100 text-stone-800 dark:bg-paper-950 dark:text-stone-100;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
 
-/* Reusable Clean SaaS Cards */
-.saas-card {
-  @apply bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800/80 rounded-card shadow-sm hover:shadow transition-all duration-200;
+/* Notebook paper ruling effect */
+.notebook-ruled {
+  line-height: 32px;
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 31px,
+    rgba(217, 209, 196, 0.55) 31px,
+    rgba(217, 209, 196, 0.55) 32px
+  );
+  background-attachment: local;
 }
 
-.saas-card-interactive {
-  @apply bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800/80 rounded-card shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200;
+.dark .notebook-ruled {
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 31px,
+    rgba(63, 63, 70, 0.55) 31px,
+    rgba(63, 63, 70, 0.55) 32px
+  );
 }
 
-/* Subtle clean input */
-.saas-input {
-  @apply w-full px-3.5 py-2.5 bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition;
+/* Paper card with subtle tactile shadow */
+.paper-card {
+  @apply bg-paper-50 dark:bg-paper-900 border border-stone-200/80 dark:border-stone-800/80 rounded-2xl transition-all duration-200;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.02);
 }
 
-/* Timeline Vertical Line */
-.timeline-track {
-  position: relative;
+.paper-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06), 0 12px 24px rgba(0, 0, 0, 0.04);
 }
 
-.timeline-track::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 19px;
-  width: 2px;
-  background: #e2e8f0;
-}
-
-.dark .timeline-track::before {
-  background: #1e293b;
-}
-
-/* Custom subtle scrollbar */
+/* Clean Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -67,25 +54,17 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-.dark ::-webkit-scrollbar-thumb {
-  background: #334155;
+  @apply bg-stone-300/70 dark:bg-stone-700/70 rounded-full;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  @apply bg-stone-400 dark:bg-stone-600;
 }
 
-/* Respect reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  *, ::before, ::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+/* Hide scrollbar for clean horizontal story carousels */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

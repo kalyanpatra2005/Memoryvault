@@ -3,16 +3,20 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { memoryService } from './services/memoryService';
 
-// Navigation & Layout
+// Splash & Navigation
+import SplashScreen from './components/SplashScreen';
 import PublicNavbar from './components/PublicNavbar';
 import AppSidebar from './components/AppSidebar';
 import AppHeader from './components/AppHeader';
 import MobileNav from './components/MobileNav';
 
 // Modals
-import AuthModal from './components/AuthModal';
+import ActionSheetModal from './components/ActionSheetModal';
 import AddMemoryModal from './components/AddMemoryModal';
+import CreateCapsuleModal from './components/CreateCapsuleModal';
 import MemoryDetailModal from './components/MemoryDetailModal';
+import SearchModal from './components/SearchModal';
+import AuthModal from './components/AuthModal';
 
 // Public Pages
 import LandingPage from './pages/LandingPage';
@@ -23,9 +27,11 @@ import ResetPasswordPage from './pages/public/ResetPasswordPage';
 import PrivacyPage from './pages/public/PrivacyPage';
 import AboutPage from './pages/public/AboutPage';
 
-// App Pages
-import DashboardPage from './pages/app/DashboardPage';
+// Authenticated Pages
+import HomePage from './pages/app/HomePage';
+import DiaryPage from './pages/app/DiaryPage';
 import MemoriesPage from './pages/app/MemoriesPage';
+import TimeCapsulesPage from './pages/app/TimeCapsulesPage';
 import TimelinePage from './pages/app/TimelinePage';
 import FavoritesPage from './pages/app/FavoritesPage';
 import ProfilePage from './pages/app/ProfilePage';
@@ -33,28 +39,33 @@ import SettingsPage from './pages/app/SettingsPage';
 
 function MainApp() {
   const { user, loading } = useAuth();
+  const [showSplash, setShowSplash] = useState(true);
+
   const [currentPath, setCurrentPath] = useState(() => {
     const hash = window.location.hash.replace(/^#/, '');
-    return hash || '/';
+    return hash || '/home';
   });
 
-  // Modal states
+  // Modals state
+  const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
+  const [isAddMemoryOpen, setIsAddMemoryOpen] = useState(false);
+  const [isCreateCapsuleOpen, setIsCreateCapsuleOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('login');
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  
   const [editingMemory, setEditingMemory] = useState(null);
   const [selectedMemory, setSelectedMemory] = useState(null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  // Hash route listener
+  // Hash listener
   useEffect(() => {
-    const handleHashChange = () => {
+    const handleHash = () => {
       const hash = window.location.hash.replace(/^#/, '');
-      setCurrentPath(hash || '/');
+      setCurrentPath(hash || '/home');
     };
-
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
   const navigate = (path) => {
@@ -62,51 +73,56 @@ function MainApp() {
     setCurrentPath(path);
   };
 
+  const handleActionSelect = (actionId) => {
+    if (actionId === 'diary') {
+      navigate('/diary');
+    } else if (actionId === 'photo' || actionId === 'video' || actionId === 'memory') {
+      setEditingMemory(null);
+      setIsAddMemoryOpen(true);
+    } else if (actionId === 'capsule') {
+      setIsCreateCapsuleOpen(true);
+    }
+  };
+
   const handleOpenAuth = (mode = 'login') => {
     setAuthModalMode(mode);
     setIsAuthModalOpen(true);
-  };
-
-  const handleOpenAddModal = (memoryToEdit = null) => {
-    setEditingMemory(memoryToEdit);
-    setIsAddModalOpen(true);
-  };
-
-  const handleSaveSuccess = () => {
-    setRefreshTrigger(prev => prev + 1);
   };
 
   const handleDeleteMemory = async (id) => {
     try {
       await memoryService.deleteMemory(id);
       setSelectedMemory(null);
-      setRefreshTrigger(prev => prev + 1);
+      setRefreshKey(k => k + 1);
     } catch (err) {
       console.error('Delete error', err);
     }
   };
 
-  const handleToggleFavorite = async (id, newFavState) => {
+  const handleToggleFavorite = async (id, isFav) => {
     try {
-      await memoryService.toggleFavorite(id, newFavState);
+      await memoryService.toggleFavorite(id, isFav);
       if (selectedMemory && selectedMemory.id === id) {
-        setSelectedMemory(prev => ({ ...prev, is_favorite: newFavState }));
+        setSelectedMemory(prev => ({ ...prev, is_favorite: isFav }));
       }
-      setRefreshTrigger(prev => prev + 1);
+      setRefreshKey(k => k + 1);
     } catch (err) {
-      console.error('Favorite toggle error', err);
+      console.error('Fav error', err);
     }
   };
 
-  // Loading Screen
+  // Splash Screen on initial open
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
+  // Auth Loading
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center text-slate-500">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="w-10 h-10 rounded-2xl border-2 border-indigo-600 border-t-transparent animate-spin" />
-          <p className="font-sans text-xs text-slate-500 font-semibold tracking-wider uppercase">
-            Loading TimeMemory...
-          </p>
+      <div className="min-h-screen bg-paper-100 dark:bg-paper-950 flex items-center justify-center text-stone-500">
+        <div className="flex flex-col items-center space-y-3">
+          <div className="w-8 h-8 rounded-full border-2 border-amber-700 border-t-transparent animate-spin" />
+          <p className="font-serif italic text-xs tracking-wider">Unlocking TimeMemory...</p>
         </div>
       </div>
     );
@@ -114,29 +130,15 @@ function MainApp() {
 
   // --- UNAUTHENTICATED FLOW ---
   if (!user) {
-    // If user explicitly navigated to a login/register page
-    if (currentPath === '/login') {
-      return <LoginPage onNavigate={navigate} />;
-    }
-    if (currentPath === '/register') {
-      return <RegisterPage onNavigate={navigate} />;
-    }
-    if (currentPath === '/forgot-password') {
-      return <ForgotPasswordPage onNavigate={navigate} />;
-    }
-    if (currentPath === '/reset-password') {
-      return <ResetPasswordPage onNavigate={navigate} />;
-    }
-    if (currentPath === '/privacy') {
-      return <PrivacyPage onNavigate={navigate} />;
-    }
-    if (currentPath === '/about') {
-      return <AboutPage onNavigate={navigate} />;
-    }
+    if (currentPath === '/login') return <LoginPage onNavigate={navigate} />;
+    if (currentPath === '/register') return <RegisterPage onNavigate={navigate} />;
+    if (currentPath === '/forgot-password') return <ForgotPasswordPage onNavigate={navigate} />;
+    if (currentPath === '/reset-password') return <ResetPasswordPage onNavigate={navigate} />;
+    if (currentPath === '/privacy') return <PrivacyPage onNavigate={navigate} />;
+    if (currentPath === '/about') return <AboutPage onNavigate={navigate} />;
 
-    // Default: Public Landing Page
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col selection:bg-indigo-500/20">
+      <div className="min-h-screen bg-paper-100 dark:bg-paper-950 text-stone-900 dark:text-stone-100 flex flex-col">
         <PublicNavbar onNavigate={navigate} />
         <main className="flex-1">
           <LandingPage
@@ -148,117 +150,167 @@ function MainApp() {
           isOpen={isAuthModalOpen}
           onClose={() => setIsAuthModalOpen(false)}
           initialMode={authModalMode}
-          onSuccess={() => navigate('/dashboard')}
+          onSuccess={() => navigate('/home')}
         />
       </div>
     );
   }
 
-  // --- AUTHENTICATED VAULT APPLICATION ---
-  // Redirect unauthenticated paths (like /login or /) to /dashboard
-  const activeAppPath = (currentPath === '/' || currentPath === '/login' || currentPath === '/register')
-    ? '/dashboard'
+  // --- AUTHENTICATED PERSONAL MEMORY BOOK ---
+  const activePath = (currentPath === '/' || currentPath === '/login' || currentPath === '/register' || currentPath === '/dashboard')
+    ? '/home'
     : currentPath;
 
   const getPageTitle = () => {
-    switch (activeAppPath) {
-      case '/dashboard': return 'Dashboard';
-      case '/memories': return 'All Memories';
-      case '/timeline': return 'Chronological Timeline';
+    switch (activePath) {
+      case '/home': return 'TimeMemory';
+      case '/diary': return 'Digital Diary';
+      case '/memories': return 'Memory Album';
+      case '/capsules': return 'Time Capsules';
+      case '/timeline': return 'Life Timeline';
       case '/favorites': return 'Favorites';
-      case '/profile': return 'Profile';
+      case '/profile': return 'Personal Profile';
       case '/settings': return 'Settings';
       case '/privacy': return 'Privacy Policy';
       case '/about': return 'About TimeMemory';
-      default: return 'Memory Vault';
+      default: return 'TimeMemory';
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0b1120] text-slate-900 dark:text-slate-100 flex selection:bg-indigo-500/20">
+    <div className="min-h-screen bg-paper-100 dark:bg-paper-950 text-stone-900 dark:text-stone-100 flex flex-col md:flex-row">
       {/* Desktop App Sidebar */}
       <div className="hidden md:block">
         <AppSidebar
-          currentPath={activeAppPath}
+          currentPath={activePath}
           onNavigate={navigate}
-          onOpenAddModal={() => handleOpenAddModal(null)}
+          onOpenActionSheet={() => setIsActionSheetOpen(true)}
         />
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 pb-20 md:pb-6">
+      {/* Main Experience Shell */}
+      <div className="flex-1 flex flex-col min-w-0">
         <AppHeader
           title={getPageTitle()}
-          onOpenAddModal={() => handleOpenAddModal(null)}
+          onOpenActionSheet={() => setIsActionSheetOpen(true)}
+          onOpenSearch={() => setIsSearchOpen(true)}
+          onNavigate={navigate}
         />
 
         <main className="flex-1">
-          {activeAppPath === '/dashboard' && (
-            <DashboardPage
-              key={refreshTrigger}
-              onOpenAddModal={() => handleOpenAddModal(null)}
-              onSelectMemory={setSelectedMemory}
+          {activePath === '/home' && (
+            <HomePage
+              key={refreshKey}
               onNavigate={navigate}
+              onOpenAddModal={() => {
+                setEditingMemory(null);
+                setIsAddMemoryOpen(true);
+              }}
+              onOpenActionSheet={() => setIsActionSheetOpen(true)}
+              onSelectMemory={setSelectedMemory}
             />
           )}
-          {activeAppPath === '/memories' && (
+          {activePath === '/diary' && <DiaryPage key={refreshKey} />}
+          {activePath === '/memories' && (
             <MemoriesPage
-              key={refreshTrigger}
-              onOpenAddModal={() => handleOpenAddModal(null)}
+              key={refreshKey}
+              onOpenAddModal={() => {
+                setEditingMemory(null);
+                setIsAddMemoryOpen(true);
+              }}
               onSelectMemory={setSelectedMemory}
             />
           )}
-          {activeAppPath === '/timeline' && (
+          {activePath === '/capsules' && (
+            <TimeCapsulesPage
+              key={refreshKey}
+              onOpenCreateCapsule={() => setIsCreateCapsuleOpen(true)}
+            />
+          )}
+          {activePath === '/timeline' && (
             <TimelinePage
-              key={refreshTrigger}
-              onOpenAddModal={() => handleOpenAddModal(null)}
+              key={refreshKey}
+              onOpenAddModal={() => {
+                setEditingMemory(null);
+                setIsAddMemoryOpen(true);
+              }}
               onSelectMemory={setSelectedMemory}
             />
           )}
-          {activeAppPath === '/favorites' && (
+          {activePath === '/favorites' && (
             <FavoritesPage
-              key={refreshTrigger}
-              onOpenAddModal={() => handleOpenAddModal(null)}
+              key={refreshKey}
+              onOpenAddModal={() => {
+                setEditingMemory(null);
+                setIsAddMemoryOpen(true);
+              }}
               onSelectMemory={setSelectedMemory}
               onNavigate={navigate}
             />
           )}
-          {activeAppPath === '/profile' && <ProfilePage />}
-          {activeAppPath === '/settings' && <SettingsPage />}
-          {activeAppPath === '/privacy' && <PrivacyPage onNavigate={navigate} />}
-          {activeAppPath === '/about' && <AboutPage onNavigate={navigate} />}
+          {activePath === '/profile' && <ProfilePage />}
+          {activePath === '/settings' && <SettingsPage />}
+          {activePath === '/privacy' && <PrivacyPage onNavigate={navigate} />}
+          {activePath === '/about' && <AboutPage onNavigate={navigate} />}
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation */}
+      {/* Mobile Bottom Navigation (4 items + central + button) */}
       <MobileNav
-        currentPath={activeAppPath}
+        currentPath={activePath}
         onNavigate={navigate}
-        onOpenAddModal={() => handleOpenAddModal(null)}
+        onOpenActionSheet={() => setIsActionSheetOpen(true)}
+      />
+
+      {/* Central + Action Sheet */}
+      <ActionSheetModal
+        isOpen={isActionSheetOpen}
+        onClose={() => setIsActionSheetOpen(false)}
+        onSelectAction={handleActionSelect}
       />
 
       {/* Add / Edit Memory Modal */}
       <AddMemoryModal
-        isOpen={isAddModalOpen}
+        isOpen={isAddMemoryOpen}
         onClose={() => {
-          setIsAddModalOpen(false);
+          setIsAddMemoryOpen(false);
           setEditingMemory(null);
         }}
         initialData={editingMemory}
-        onSuccess={handleSaveSuccess}
+        onSuccess={() => setRefreshKey(k => k + 1)}
       />
 
-      {/* View Memory Details Modal */}
+      {/* Create Time Capsule Modal */}
+      <CreateCapsuleModal
+        isOpen={isCreateCapsuleOpen}
+        onClose={() => setIsCreateCapsuleOpen(false)}
+        onSuccess={() => {
+          setRefreshKey(k => k + 1);
+          navigate('/capsules');
+        }}
+      />
+
+      {/* Memory Detail Modal */}
       <MemoryDetailModal
         isOpen={Boolean(selectedMemory)}
         onClose={() => setSelectedMemory(null)}
         memory={selectedMemory}
-        onEdit={(mem) => {
+        onEdit={(m) => {
           setSelectedMemory(null);
-          handleOpenAddModal(mem);
+          setEditingMemory(m);
+          setIsAddMemoryOpen(true);
         }}
         onDelete={handleDeleteMemory}
         onToggleFavorite={handleToggleFavorite}
+      />
+
+      {/* Search Modal */}
+      <SearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onSelectMemory={setSelectedMemory}
+        onSelectDiary={() => navigate('/diary')}
+        onSelectCapsule={() => navigate('/capsules')}
       />
     </div>
   );

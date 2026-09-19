@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+﻿import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -9,7 +9,7 @@ export const isSupabaseConfigured = Boolean(
   !supabaseUrl.includes('your-project-id')
 );
 
-// Real Supabase Client if configured, or a resilient developer mock to prevent runtime crash
+// Real Supabase Client if configured, or developer mock fallback
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
@@ -21,10 +21,6 @@ export const supabase = isSupabaseConfigured
   : createMockSupabase();
 
 function createMockSupabase() {
-  console.warn(
-    '[TimeMemory] Supabase credentials not detected or using placeholder. Running with local storage adapter. Configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY for live Supabase sync.'
-  );
-
   let mockUser = null;
   try {
     const raw = sessionStorage.getItem('timememory_session_user');
@@ -98,28 +94,49 @@ function createMockSupabase() {
         };
       },
     },
+
     from(table) {
       return {
         select(cols = '*') {
-          return {
+          let filters = [];
+          let sortField = null;
+          let sortAscending = true;
+
+          const queryBuilder = {
             eq(field, val) {
-              return {
-                async order() {
-                  const items = getMockTable(table).filter((r) => r[field] === val);
-                  return { data: items, error: null };
-                },
-                async single() {
-                  const items = getMockTable(table).filter((r) => r[field] === val);
-                  return { data: items[0] || null, error: null };
-                },
-              };
+              filters.push((r) => r[field] === val);
+              return queryBuilder;
             },
-            async order() {
-              const currentUserId = mockUser?.id;
-              const items = getMockTable(table).filter((r) => !currentUserId || r.user_id === currentUserId);
+            order(field, { ascending = true } = {}) {
+              sortField = field;
+              sortAscending = ascending;
+              return queryBuilder;
+            },
+            async single() {
+              const res = await queryBuilder.execute();
+              return { data: res.data?.[0] || null, error: null };
+            },
+            async then(resolve) {
+              const res = await queryBuilder.execute();
+              resolve(res);
+            },
+            async execute() {
+              let items = getMockTable(table);
+              for (const f of filters) {
+                items = items.filter(f);
+              }
+              if (sortField) {
+                items.sort((a, b) => {
+                  if (a[sortField] < b[sortField]) return sortAscending ? -1 : 1;
+                  if (a[sortField] > b[sortField]) return sortAscending ? 1 : -1;
+                  return 0;
+                });
+              }
               return { data: items, error: null };
-            },
+            }
           };
+
+          return queryBuilder;
         },
         async insert(records) {
           const list = Array.isArray(records) ? records : [records];
@@ -130,7 +147,11 @@ function createMockSupabase() {
             ...r,
           }));
           saveMockTable(table, [...withIds, ...current]);
-          return { data: withIds, error: null };
+          return { 
+            data: withIds, 
+            error: null,
+            select() { return Promise.resolve({ data: withIds, error: null }); }
+          };
         },
         update(updates) {
           return {
@@ -142,6 +163,12 @@ function createMockSupabase() {
                   saveMockTable(table, updated);
                   return { data: updated.filter((r) => r[field] === val), error: null };
                 },
+                async then(resolve) {
+                  const current = getMockTable(table);
+                  const updated = current.map((r) => (r[field] === val ? { ...r, ...updates, updated_at: new Date().toISOString() } : r));
+                  saveMockTable(table, updated);
+                  resolve({ data: updated.filter((r) => r[field] === val), error: null });
+                }
               };
             },
           };
@@ -156,6 +183,12 @@ function createMockSupabase() {
                   saveMockTable(table, remaining);
                   return { data: true, error: null };
                 },
+                async then(resolve) {
+                  const current = getMockTable(table);
+                  const remaining = current.filter((r) => r[field] !== val);
+                  saveMockTable(table, remaining);
+                  resolve({ data: true, error: null });
+                }
               };
             },
           };

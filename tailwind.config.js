@@ -1,4 +1,4 @@
-/** @type {import('tailwindcss').Config} */
+﻿/** @type {import('tailwindcss').Config} */
 export default {
   darkMode: 'class',
   content: [
@@ -9,8 +9,19 @@ export default {
     extend: {
       fontFamily: {
         sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        serif: ['"Playfair Display"', 'Lora', '"Cormorant Garamond"', 'Georgia', 'serif'],
+        handwriting: ['Caveat', 'cursive'],
       },
       colors: {
+        paper: {
+          50: '#fdfbf7',   // Cream paper
+          100: '#faf8f5',  // Warm off-white
+          200: '#f5f0e8',  // Soft beige
+          300: '#ece4d8',  // Aged paper border
+          800: '#27272a',  // Warm dark gray
+          900: '#18181b',  // Soft black
+          950: '#121214',  // Deep charcoal
+        },
         brand: {
           50: '#eef2ff',
           100: '#e0e7ff',
@@ -38,8 +49,8 @@ export default {
         }
       },
       borderRadius: {
-        'card': '14px',
-        'modal': '16px'
+        'card': '16px',
+        'modal': '20px'
       }
     },
   },
