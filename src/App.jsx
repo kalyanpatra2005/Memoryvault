@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { memoryService } from './services/memoryService';
@@ -43,7 +43,7 @@ function MainApp() {
 
   const [currentPath, setCurrentPath] = useState(() => {
     const hash = window.location.hash.replace(/^#/, '');
-    return hash || '/home';
+    return hash || '/';
   });
 
   // Modals state
@@ -62,7 +62,7 @@ function MainApp() {
   useEffect(() => {
     const handleHash = () => {
       const hash = window.location.hash.replace(/^#/, '');
-      setCurrentPath(hash || '/home');
+      setCurrentPath(hash || '/');
     };
     window.addEventListener('hashchange', handleHash);
     return () => window.removeEventListener('hashchange', handleHash);
@@ -119,41 +119,26 @@ function MainApp() {
   // Auth Loading
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper-100 dark:bg-paper-950 flex items-center justify-center text-stone-500">
+      <div className="min-h-screen bg-[#0e0c0a] flex items-center justify-center text-stone-500">
         <div className="flex flex-col items-center space-y-3">
-          <div className="w-8 h-8 rounded-full border-2 border-amber-700 border-t-transparent animate-spin" />
-          <p className="font-serif italic text-xs tracking-wider">Unlocking TimeMemory...</p>
+          <div className="w-8 h-8 rounded-full border-2 border-[#c5a872] border-t-transparent animate-spin" />
+          <p className="font-serif italic text-xs tracking-wider text-[#a69d8f]">Unlocking TimeMemory...</p>
         </div>
       </div>
     );
   }
 
-  // --- UNAUTHENTICATED FLOW ---
+  // --- UNAUTHENTICATED FLOW (FRONT PAGE & AUTH) ---
   if (!user) {
-    if (currentPath === '/login') return <LoginPage onNavigate={navigate} />;
-    if (currentPath === '/register') return <RegisterPage onNavigate={navigate} />;
+    if (currentPath === '/login') return <LoginPage onNavigate={navigate} initialMode="login" />;
+    if (currentPath === '/register') return <LoginPage onNavigate={navigate} initialMode="register" />;
     if (currentPath === '/forgot-password') return <ForgotPasswordPage onNavigate={navigate} />;
     if (currentPath === '/reset-password') return <ResetPasswordPage onNavigate={navigate} />;
     if (currentPath === '/privacy') return <PrivacyPage onNavigate={navigate} />;
     if (currentPath === '/about') return <AboutPage onNavigate={navigate} />;
 
-    return (
-      <div className="min-h-screen bg-paper-100 dark:bg-paper-950 text-stone-900 dark:text-stone-100 flex flex-col">
-        <PublicNavbar onNavigate={navigate} />
-        <main className="flex-1">
-          <LandingPage
-            onOpenAuth={handleOpenAuth}
-            onGuestEnter={() => navigate('/login')}
-          />
-        </main>
-        <AuthModal
-          isOpen={isAuthModalOpen}
-          onClose={() => setIsAuthModalOpen(false)}
-          initialMode={authModalMode}
-          onSuccess={() => navigate('/home')}
-        />
-      </div>
-    );
+    // DEFAULT FRONT PAGE: The authentic Memory Vault entrance matching the exact design
+    return <LandingPage onNavigate={navigate} />;
   }
 
   // --- AUTHENTICATED PERSONAL MEMORY BOOK ---

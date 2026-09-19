@@ -1,12 +1,16 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Lock, Mail, User, Eye, EyeOff, AlertCircle, Loader2, X, ArrowLeft } from 'lucide-react';
 
-export default function LoginPage({ onNavigate }) {
+export default function LoginPage({ onNavigate, initialMode = null }) {
   const { login, register } = useAuth();
 
-  // Mode: 'view' (matches the exact screenshot), 'login' (slide-up / modal form), 'register'
-  const [activeSheet, setActiveSheet] = useState(null); // null | 'login' | 'register'
+  // Mode: null (matches the exact screenshot front page), 'login' (slide-up form), 'register'
+  const [activeSheet, setActiveSheet] = useState(initialMode);
+
+  React.useEffect(() => {
+    setActiveSheet(initialMode);
+  }, [initialMode]);
 
   // Login form state
   const [email, setEmail] = useState('');
@@ -76,9 +80,9 @@ export default function LoginPage({ onNavigate }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#0e0c0a] flex items-center justify-center p-2 sm:p-4 selection:bg-[#c5a872]/30 selection:text-[#f3ece0]">
-      {/* Exact Mobile Frame Container */}
-      <div className="w-full max-w-[430px] min-h-[92vh] sm:min-h-[840px] bg-[#141210] rounded-[2rem] sm:rounded-[2.5rem] border border-[#2a241e] shadow-2xl p-5 sm:p-7 flex flex-col justify-between relative overflow-hidden">
+    <div className="min-h-screen bg-[#0e0c0a] flex items-center justify-center p-0 sm:p-4 selection:bg-[#c5a872]/30 selection:text-[#f3ece0]">
+      {/* Exact Mobile Frame Container - Edge-to-edge on mobile, sleek frame on desktop */}
+      <div className="w-full max-w-[430px] min-h-[100dvh] sm:min-h-[840px] bg-[#141210] rounded-none sm:rounded-[2.5rem] border-0 sm:border border-[#2a241e] shadow-2xl p-5 sm:p-7 flex flex-col justify-between relative overflow-hidden">
         
         {/* Subtle Warm Amber Glow Behind Header */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-36 bg-[#c5a872]/10 rounded-full blur-3xl pointer-events-none" />
