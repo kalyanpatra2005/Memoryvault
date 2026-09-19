@@ -1,7 +1,7 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || '';
+const supabaseAnonKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || '';
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
@@ -38,15 +38,29 @@ function createMockSupabase() {
         return { data: { user: mockUser }, error: null };
       },
       async signUp({ email, password, options }) {
+        const cleanEmail = (email || '').trim().toLowerCase();
         const id = 'mock-' + Math.random().toString(36).substring(2, 9);
+        const defaultSettings = {
+          theme: 'dark',
+          fontStyle: 'serif',
+          memoryView: 'grid',
+          autoLock: 'never',
+          defaultCategory: 'Personal',
+          soundEnabled: true
+        };
         mockUser = {
           id,
-          email,
+          email: cleanEmail,
           user_metadata: {
-            full_name: options?.data?.full_name || email.split('@')[0],
+            full_name: options?.data?.full_name || cleanEmail.split('@')[0],
+            settings: defaultSettings,
           },
         };
-        sessionStorage.setItem('timememory_session_user', JSON.stringify(mockUser));
+        try {
+          localStorage.setItem(`vault_user_${cleanEmail}`, JSON.stringify(mockUser));
+          localStorage.setItem(`vault_settings_${cleanEmail}`, JSON.stringify(defaultSettings));
+          sessionStorage.setItem('timememory_session_user', JSON.stringify(mockUser));
+        } catch (e) {}
         authListeners.forEach((fn) => fn('SIGNED_IN', { user: mockUser }));
         return { data: { user: mockUser, session: { user: mockUser } }, error: null };
       },
@@ -54,20 +68,52 @@ function createMockSupabase() {
         if (!email || !password) {
           return { data: { user: null, session: null }, error: { message: 'Email and password required' } };
         }
+        const cleanEmail = (email || '').trim().toLowerCase();
+        
+        // Restore permanently stored user data & settings
+        let savedUser = null;
+        try {
+          const rawUser = localStorage.getItem(`vault_user_${cleanEmail}`);
+          if (rawUser) savedUser = JSON.parse(rawUser);
+        } catch (e) {}
+
+        let savedSettings = {
+          theme: 'dark',
+          fontStyle: 'serif',
+          memoryView: 'grid',
+          autoLock: 'never',
+          defaultCategory: 'Personal',
+          soundEnabled: true
+        };
+        try {
+          const rawSettings = localStorage.getItem(`vault_settings_${cleanEmail}`);
+          if (rawSettings) {
+            savedSettings = { ...savedSettings, ...JSON.parse(rawSettings) };
+          }
+        } catch (e) {}
+
         mockUser = {
-          id: 'user-' + btoa(email).substring(0, 10).toLowerCase(),
-          email,
+          id: savedUser?.id || ('user-' + btoa(cleanEmail).substring(0, 10).toLowerCase()),
+          email: cleanEmail,
           user_metadata: {
-            full_name: email.split('@')[0],
+            full_name: savedUser?.user_metadata?.full_name || cleanEmail.split('@')[0],
+            settings: savedSettings,
+            ...(savedUser?.user_metadata || {})
           },
         };
-        sessionStorage.setItem('timememory_session_user', JSON.stringify(mockUser));
+
+        try {
+          localStorage.setItem(`vault_user_${cleanEmail}`, JSON.stringify(mockUser));
+          sessionStorage.setItem('timememory_session_user', JSON.stringify(mockUser));
+        } catch (e) {}
         authListeners.forEach((fn) => fn('SIGNED_IN', { user: mockUser }));
         return { data: { user: mockUser, session: { user: mockUser } }, error: null };
       },
       async signOut() {
         mockUser = null;
-        sessionStorage.removeItem('timememory_session_user');
+        try {
+          sessionStorage.removeItem('timememory_session_user');
+        } catch (e) {}
         authListeners.forEach((fn) => fn('SIGNED_OUT', null));
         return { error: null };
       },
@@ -75,9 +121,24 @@ function createMockSupabase() {
         return { data: {}, error: null };
       },
       async updateUser({ password, data }) {
-        if (mockUser && data?.full_name) {
-          mockUser.user_metadata.full_name = data.full_name;
-          sessionStorage.setItem('timememory_session_user', JSON.stringify(mockUser));
+        if (mockUser) {
+          if (!mockUser.user_metadata) mockUser.user_metadata = {};
+          if (data?.full_name) {
+            mockUser.user_metadata.full_name = data.full_name;
+          }
+          if (data?.settings) {
+            mockUser.user_metadata.settings = {
+              ...(mockUser.user_metadata.settings || {}),
+              ...data.settings
+            };
+            try {
+              localStorage.setItem(`vault_settings_${mockUser.email}`, JSON.stringify(mockUser.user_metadata.settings));
+            } catch (e) {}
+          }
+          try {
+            localStorage.setItem(`vault_user_${mockUser.email}`, JSON.stringify(mockUser));
+            sessionStorage.setItem('timememory_session_user', JSON.stringify(mockUser));
+          } catch (e) {}
         }
         return { data: { user: mockUser }, error: null };
       },
@@ -200,15 +261,28 @@ function createMockSupabase() {
         return {
           async upload(path, file) {
             const dataUrl = await fileToDataUrl(file);
-            sessionStorage.setItem('timememory_storage_' + path, dataUrl);
+            try {
+              localStorage.setItem('timememory_storage_' + path, dataUrl);
+            } catch (e) {}
+            try {
+              sessionStorage.setItem('timememory_storage_' + path, dataUrl);
+            } catch (e) {}
             return { data: { path }, error: null };
           },
           getPublicUrl(path) {
-            const stored = sessionStorage.getItem('timememory_storage_' + path);
-            return { data: { publicUrl: stored || '' } };
+            let stored = '';
+            try {
+              stored = localStorage.getItem('timememory_storage_' + path) || sessionStorage.getItem('timememory_storage_' + path) || '';
+            } catch (e) {}
+            return { data: { publicUrl: stored } };
           },
           async remove(paths) {
-            paths.forEach((p) => sessionStorage.removeItem('timememory_storage_' + p));
+            paths.forEach((p) => {
+              try {
+                localStorage.removeItem('timememory_storage_' + p);
+                sessionStorage.removeItem('timememory_storage_' + p);
+              } catch (e) {}
+            });
             return { data: true, error: null };
           },
         };
@@ -219,7 +293,7 @@ function createMockSupabase() {
 
 function getMockTable(name) {
   try {
-    const raw = sessionStorage.getItem('timememory_db_' + name);
+    const raw = localStorage.getItem('timememory_db_' + name) || sessionStorage.getItem('timememory_db_' + name);
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
     return [];
@@ -228,6 +302,7 @@ function getMockTable(name) {
 
 function saveMockTable(name, list) {
   try {
+    localStorage.setItem('timememory_db_' + name, JSON.stringify(list));
     sessionStorage.setItem('timememory_db_' + name, JSON.stringify(list));
   } catch (e) {}
 }

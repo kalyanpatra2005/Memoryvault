@@ -107,9 +107,10 @@ async function initDb() {
       ALTER TABLE media ADD COLUMN IF NOT EXISTS user_email TEXT;
       ALTER TABLE diaries ADD COLUMN IF NOT EXISTS user_email TEXT;
       ALTER TABLE capsules ADD COLUMN IF NOT EXISTS user_email TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '{}';
     `);
     tablesInitialized = true;
-    console.log('✓ Cloud Database tables ready with user_email support.');
+    console.log('✓ Cloud Database tables ready with user_email and permanent settings support.');
   } catch (err) {
     console.error('Database initialization error:', err);
   }
@@ -374,7 +375,7 @@ router.get('/auth/me', requireAuth, async (req, res) => {
     const userEmail = (req.user.email || '').trim().toLowerCase();
     if (activePool) {
       const q = await activePool.query(
-        'SELECT id, name, email, phone, dob, created_at FROM users WHERE id = $1 OR (email IS NOT NULL AND LOWER(email) = $2)',
+        'SELECT id, name, email, phone, dob, settings, created_at FROM users WHERE id = $1 OR (email IS NOT NULL AND LOWER(email) = $2)',
         [req.user.id || 0, userEmail]
       );
       if (q.rows.length > 0) return res.json({ user: q.rows[0] });
@@ -387,6 +388,7 @@ router.get('/auth/me', requireAuth, async (req, res) => {
         name: req.user.name || (req.user.email ? req.user.email.split('@')[0] : 'Honored Keeper'),
         email: req.user.email || 'user@memoryvault.local',
         phone: req.user.phone || '',
+        settings: {},
         created_at: new Date().toISOString()
       };
       memStore.users.push(user);
@@ -394,6 +396,52 @@ router.get('/auth/me', requireAuth, async (req, res) => {
     const safe = { ...user };
     delete safe.password_hash;
     return res.json({ user: safe });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ================= USER SETTINGS PERMANENT STORAGE =================
+router.get('/user/settings', requireAuth, async (req, res) => {
+  try {
+    const activePool = getPool();
+    const userEmail = (req.user.email || '').trim().toLowerCase();
+    if (activePool) {
+      const q = await activePool.query(
+        'SELECT settings FROM users WHERE id = $1 OR (email IS NOT NULL AND LOWER(email) = $2)',
+        [req.user.id || 0, userEmail]
+      );
+      if (q.rows.length > 0) {
+        return res.json({ settings: q.rows[0].settings || {} });
+      }
+    }
+    const memUser = memStore.users.find(u => u.id === req.user.id || (u.email && u.email.toLowerCase() === userEmail));
+    return res.json({ settings: memUser?.settings || {} });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/user/settings', requireAuth, async (req, res) => {
+  try {
+    const { settings } = req.body;
+    if (!settings || typeof settings !== 'object') {
+      return res.status(400).json({ error: 'Invalid settings object' });
+    }
+    const activePool = getPool();
+    const userEmail = (req.user.email || '').trim().toLowerCase();
+    if (activePool) {
+      await activePool.query(
+        'UPDATE users SET settings = $1 WHERE id = $2 OR (email IS NOT NULL AND LOWER(email) = $3)',
+        [JSON.stringify(settings), req.user.id || 0, userEmail]
+      );
+      return res.json({ success: true, settings });
+    }
+    const memUser = memStore.users.find(u => u.id === req.user.id || (u.email && u.email.toLowerCase() === userEmail));
+    if (memUser) {
+      memUser.settings = { ...(memUser.settings || {}), ...settings };
+    }
+    return res.json({ success: true, settings });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
