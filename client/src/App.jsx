@@ -5,7 +5,6 @@ import { memoryService } from './services/memoryService';
 
 // Splash & Navigation
 import SplashScreen from './components/SplashScreen';
-import PublicNavbar from './components/PublicNavbar';
 import AppSidebar from './components/AppSidebar';
 import AppHeader from './components/AppHeader';
 import MobileNav from './components/MobileNav';
@@ -16,7 +15,6 @@ import AddMemoryModal from './components/AddMemoryModal';
 import CreateCapsuleModal from './components/CreateCapsuleModal';
 import MemoryDetailModal from './components/MemoryDetailModal';
 import SearchModal from './components/SearchModal';
-import AuthModal from './components/AuthModal';
 
 // Public Pages
 import LandingPage from './pages/LandingPage';
@@ -51,8 +49,6 @@ function MainApp() {
   const [isAddMemoryOpen, setIsAddMemoryOpen] = useState(false);
   const [isCreateCapsuleOpen, setIsCreateCapsuleOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalMode, setAuthModalMode] = useState('login');
   
   const [editingMemory, setEditingMemory] = useState(null);
   const [selectedMemory, setSelectedMemory] = useState(null);
@@ -82,11 +78,6 @@ function MainApp() {
     } else if (actionId === 'capsule') {
       setIsCreateCapsuleOpen(true);
     }
-  };
-
-  const handleOpenAuth = (mode = 'login') => {
-    setAuthModalMode(mode);
-    setIsAuthModalOpen(true);
   };
 
   const handleDeleteMemory = async (id) => {
