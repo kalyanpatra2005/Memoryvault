@@ -199,7 +199,7 @@ function createMockSupabase() {
 
           return queryBuilder;
         },
-        async insert(records) {
+        insert(records) {
           const list = Array.isArray(records) ? records : [records];
           const current = getMockTable(table);
           const withIds = list.map((r) => ({
@@ -208,11 +208,28 @@ function createMockSupabase() {
             ...r,
           }));
           saveMockTable(table, [...withIds, ...current]);
-          return { 
-            data: withIds, 
+          const builder = {
+            data: withIds,
             error: null,
-            select() { return Promise.resolve({ data: withIds, error: null }); }
+            select(cols) {
+              return {
+                ...builder,
+                async single() {
+                  return { data: withIds[0] || null, error: null };
+                },
+                async then(resolve, reject) {
+                  resolve({ data: withIds, error: null });
+                }
+              };
+            },
+            async single() {
+              return { data: withIds[0] || null, error: null };
+            },
+            async then(resolve, reject) {
+              resolve({ data: withIds, error: null });
+            }
           };
+          return builder;
         },
         update(updates) {
           const filters = [];
@@ -221,7 +238,7 @@ function createMockSupabase() {
               filters.push((r) => r[field] === val);
               return builder;
             },
-            async execute() {
+            execute() {
               const current = getMockTable(table);
               const updated = current.map((r) => {
                 if (filters.length > 0 && filters.every((f) => f(r))) {
@@ -233,12 +250,34 @@ function createMockSupabase() {
               const matched = updated.filter((r) => filters.length > 0 && filters.every((f) => f(r)));
               return { data: matched, error: null };
             },
-            async select() {
-              return await builder.execute();
+            select(cols) {
+              return {
+                eq(field, val) {
+                  filters.push((r) => r[field] === val);
+                  return this;
+                },
+                async single() {
+                  const res = builder.execute();
+                  return { data: res.data?.[0] || null, error: null };
+                },
+                async then(resolve, reject) {
+                  try {
+                    const res = builder.execute();
+                    resolve(res);
+                  } catch (err) {
+                    if (reject) reject(err);
+                    else resolve({ data: null, error: err });
+                  }
+                }
+              };
+            },
+            async single() {
+              const res = builder.execute();
+              return { data: res.data?.[0] || null, error: null };
             },
             async then(resolve, reject) {
               try {
-                const res = await builder.execute();
+                const res = builder.execute();
                 resolve(res);
               } catch (err) {
                 if (reject) reject(err);
@@ -255,18 +294,32 @@ function createMockSupabase() {
               filters.push((r) => r[field] === val);
               return builder;
             },
-            async execute() {
+            execute() {
               const current = getMockTable(table);
               const remaining = current.filter((r) => !filters.every((f) => f(r)));
               saveMockTable(table, remaining);
               return { data: true, error: null };
             },
-            async select() {
-              return await builder.execute();
+            select(cols) {
+              return {
+                eq(field, val) {
+                  filters.push((r) => r[field] === val);
+                  return this;
+                },
+                async then(resolve, reject) {
+                  try {
+                    const res = builder.execute();
+                    resolve(res);
+                  } catch (err) {
+                    if (reject) reject(err);
+                    else resolve({ data: null, error: err });
+                  }
+                }
+              };
             },
             async then(resolve, reject) {
               try {
-                const res = await builder.execute();
+                const res = builder.execute();
                 resolve(res);
               } catch (err) {
                 if (reject) reject(err);

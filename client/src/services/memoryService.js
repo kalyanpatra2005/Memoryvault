@@ -337,13 +337,17 @@ export const memoryService = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Authentication required');
 
+    const cleanTitle = title?.trim() || null;
+    const cleanContent = (content || '').trim();
+    const dateStr = entry_date || new Date().toISOString().split('T')[0];
+
     const { data, error } = await supabase
       .from('diary_entries')
       .insert({
         user_id: user.id,
-        title: title?.trim() || null,
-        content: content.trim(),
-        entry_date: entry_date || new Date().toISOString().split('T')[0]
+        title: cleanTitle,
+        content: cleanContent,
+        entry_date: dateStr
       })
       .select();
 
@@ -353,25 +357,48 @@ export const memoryService = {
     // Upload attached photos if any
     if (files && files.length > 0 && newEntry) {
       for (const f of files) {
-        const ext = f.name.split('.').pop() || 'jpg';
-        const cleanFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
-        const filePath = `${user.id}/diary/${newEntry.id}/${cleanFileName}`;
+        try {
+          const ext = f.name?.split('.').pop() || 'jpg';
+          const cleanFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+          const filePath = `${user.id}/diary/${newEntry.id}/${cleanFileName}`;
 
-        const { error: uploadErr } = await supabase.storage
-          .from('memory-media')
-          .upload(filePath, f);
+          const { error: uploadErr } = await supabase.storage
+            .from('memory-media')
+            .upload(filePath, f);
 
-        if (!uploadErr) {
-          await supabase.from('media').insert({
-            diary_id: newEntry.id,
-            user_id: user.id,
-            file_path: filePath,
-            file_type: f.type.startsWith('video/') ? 'video' : 'photo',
-            file_name: f.name
-          });
+          if (!uploadErr) {
+            await supabase.from('media').insert({
+              diary_id: newEntry.id,
+              user_id: user.id,
+              file_path: filePath,
+              file_type: (f.type || '').startsWith('video/') ? 'video' : 'photo',
+              file_name: f.name || 'attachment'
+            });
+          }
+        } catch (mediaErr) {
+          console.warn('Non-critical photo attach warning:', mediaErr);
         }
       }
     }
+
+    // Cloud API synchronization if token exists
+    try {
+      const token = localStorage.getItem('timememory_session_token') || sessionStorage.getItem('timememory_session_token');
+      if (token) {
+        await fetch('/api/diary', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            title: cleanTitle || 'Daily Reflection',
+            content: cleanContent,
+            entry_date: dateStr
+          })
+        });
+      }
+    } catch (e) {}
 
     return newEntry;
   },
@@ -394,25 +421,47 @@ export const memoryService = {
 
     if (newFiles && newFiles.length > 0) {
       for (const f of newFiles) {
-        const ext = f.name.split('.').pop() || 'jpg';
-        const cleanFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
-        const filePath = `${user.id}/diary/${id}/${cleanFileName}`;
+        try {
+          const ext = f.name?.split('.').pop() || 'jpg';
+          const cleanFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+          const filePath = `${user.id}/diary/${id}/${cleanFileName}`;
 
-        const { error: uploadErr } = await supabase.storage
-          .from('memory-media')
-          .upload(filePath, f);
+          const { error: uploadErr } = await supabase.storage
+            .from('memory-media')
+            .upload(filePath, f);
 
-        if (!uploadErr) {
-          await supabase.from('media').insert({
-            diary_id: id,
-            user_id: user.id,
-            file_path: filePath,
-            file_type: f.type.startsWith('video/') ? 'video' : 'photo',
-            file_name: f.name
-          });
+          if (!uploadErr) {
+            await supabase.from('media').insert({
+              diary_id: id,
+              user_id: user.id,
+              file_path: filePath,
+              file_type: (f.type || '').startsWith('video/') ? 'video' : 'photo',
+              file_name: f.name || 'attachment'
+            });
+          }
+        } catch (mediaErr) {
+          console.warn('Non-critical photo attach warning:', mediaErr);
         }
       }
     }
+
+    // Cloud API synchronization if token exists
+    try {
+      const token = localStorage.getItem('timememory_session_token') || sessionStorage.getItem('timememory_session_token');
+      if (token) {
+        await fetch(`/api/diary/${id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            title: fields.title,
+            content: fields.content
+          })
+        });
+      }
+    } catch (e) {}
 
     return Array.isArray(data) ? data[0] : data;
   },

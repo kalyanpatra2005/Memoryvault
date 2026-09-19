@@ -101,7 +101,10 @@ export default function DiaryPage() {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!entryContent.trim()) return;
+    if (!entryContent.trim()) {
+      alert('Please write something in your notebook before saving.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -131,9 +134,10 @@ export default function DiaryPage() {
       if (fileInputRef.current) fileInputRef.current.value = '';
 
       setTimeout(() => setSaveSuccess(false), 3500);
-      loadDiaryEntries(false);
+      await loadDiaryEntries(false);
     } catch (err) {
       console.error('Save diary error', err);
+      alert('Could not save diary entry: ' + (err.message || 'Please try again.'));
     } finally {
       setSaving(false);
     }

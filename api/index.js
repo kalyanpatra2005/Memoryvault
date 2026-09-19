@@ -698,10 +698,11 @@ router.get('/diary', requireAuth, async (req, res) => {
 
 router.post('/diary', requireAuth, async (req, res) => {
   try {
-    const { title, content, mood, image_url, weather } = req.body;
-    if (!title || !content) {
-      return res.status(400).json({ error: 'Title and content required.' });
+    const { title, content, mood, image_url, weather, entry_date } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Content required.' });
     }
+    const cleanTitle = (title && title.trim()) ? title.trim() : 'Daily Reflection';
     const activePool = getPool();
     const userId = Number(req.user.id) || 0;
     const userEmail = (req.user.email || '').trim().toLowerCase();
@@ -709,7 +710,7 @@ router.post('/diary', requireAuth, async (req, res) => {
     if (activePool) {
       const exist = await activePool.query(
         'SELECT * FROM diaries WHERE (user_id = $1 OR (user_email IS NOT NULL AND LOWER(user_email) = $2)) AND title = $3 AND content = $4',
-        [userId, userEmail, title, content]
+        [userId, userEmail, cleanTitle, content]
       );
       if (exist.rows.length > 0) {
         return res.json({ message: 'Diary entry already vaulted.', entry: exist.rows[0] });
@@ -717,13 +718,13 @@ router.post('/diary', requireAuth, async (req, res) => {
 
       const q = await activePool.query(
         'INSERT INTO diaries (user_id, user_email, title, content, mood, image_url, weather) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-        [userId, userEmail, title, content, mood || 'Nostalgia', image_url || '', weather || 'Quiet']
+        [userId, userEmail, cleanTitle, content, mood || 'Nostalgia', image_url || '', weather || 'Quiet']
       );
       return res.status(201).json({ message: 'Diary entry written to vault.', entry: q.rows[0] });
     } else {
       const exist = memStore.diaries.find(
         d => (d.user_id === req.user.id || (d.user_email && d.user_email.toLowerCase() === userEmail)) &&
-             d.title === title && d.content === content
+             d.title === cleanTitle && d.content === content
       );
       if (exist) {
         return res.json({ message: 'Diary entry already vaulted.', entry: exist });
@@ -733,16 +734,49 @@ router.post('/diary', requireAuth, async (req, res) => {
         id: Date.now(),
         user_id: req.user.id,
         user_email: userEmail,
-        title,
+        title: cleanTitle,
         content,
         mood: mood || 'Nostalgia',
         image_url: image_url || '',
         weather: weather || 'Quiet',
+        entry_date: entry_date || new Date().toISOString().split('T')[0],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
       memStore.diaries.push(entry);
       return res.status(201).json({ message: 'Diary entry written.', entry });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/diary/:id', requireAuth, async (req, res) => {
+  try {
+    const { title, content, mood, image_url, weather } = req.body;
+    const activePool = getPool();
+    const userId = Number(req.user.id) || 0;
+    const userEmail = (req.user.email || '').trim().toLowerCase();
+
+    if (activePool) {
+      const q = await activePool.query(
+        'UPDATE diaries SET title = COALESCE($1, title), content = COALESCE($2, content), mood = COALESCE($3, mood), image_url = COALESCE($4, image_url), weather = COALESCE($5, weather), updated_at = CURRENT_TIMESTAMP WHERE id = $6 AND (user_id = $7 OR (user_email IS NOT NULL AND LOWER(user_email) = $8)) RETURNING *',
+        [title || null, content || null, mood || null, image_url || null, weather || null, req.params.id, userId, userEmail]
+      );
+      return res.json({ message: 'Diary entry updated.', entry: q.rows[0] });
+    } else {
+      const entry = memStore.diaries.find(
+        d => d.id == req.params.id && (d.user_id === req.user.id || (d.user_email && d.user_email.toLowerCase() === userEmail))
+      );
+      if (entry) {
+        if (title !== undefined) entry.title = title;
+        if (content !== undefined) entry.content = content;
+        if (mood !== undefined) entry.mood = mood;
+        if (image_url !== undefined) entry.image_url = image_url;
+        if (weather !== undefined) entry.weather = weather;
+        entry.updated_at = new Date().toISOString();
+      }
+      return res.json({ message: 'Diary entry updated.', entry });
     }
   } catch (err) {
     return res.status(500).json({ error: err.message });
