@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { memoryService } from '../../services/memoryService';
 import { 
   BookOpen, Calendar, Camera, Save, Trash2, 
@@ -30,23 +30,25 @@ export default function DiaryPage() {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    loadDiaryEntries();
+    loadDiaryEntries(false);
   }, [searchQuery]);
 
-  const loadDiaryEntries = async () => {
+  const loadDiaryEntries = async (shouldAutoFill = false) => {
     setLoading(true);
     try {
       const data = await memoryService.getDiaryEntries({ search: searchQuery });
       setEntries(data);
 
-      // Check if there is an existing entry for entryDate
-      const existing = data.find(e => (e.entry_date || '').startsWith(entryDate));
-      if (existing && !editingId) {
-        setEntryTitle(existing.title || '');
-        setEntryContent(existing.content || '');
-        setEditingId(existing.id);
-        if (existing.media) {
-          setFilePreviews(existing.media.map(m => m.url));
+      // Only auto-populate if explicitly requested and editor not already cleared
+      if (shouldAutoFill && !editingId) {
+        const existing = data.find(e => (e.entry_date || '').startsWith(entryDate));
+        if (existing) {
+          setEntryTitle(existing.title || '');
+          setEntryContent(existing.content || '');
+          setEditingId(existing.id);
+          if (existing.media) {
+            setFilePreviews(existing.media.map(m => m.url));
+          }
         }
       }
     } catch (err) {
@@ -72,6 +74,15 @@ export default function DiaryPage() {
       setFilePreviews([]);
       setSelectedFiles([]);
     }
+  };
+
+  const handleNewEntry = () => {
+    setEntryTitle('');
+    setEntryContent('');
+    setEditingId(null);
+    setFilePreviews([]);
+    setSelectedFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleFileChange = (e) => {
@@ -101,19 +112,26 @@ export default function DiaryPage() {
           selectedFiles
         );
       } else {
-        const created = await memoryService.createDiaryEntry({
+        await memoryService.createDiaryEntry({
           title: entryTitle,
           content: entryContent,
           entry_date: entryDate,
           files: selectedFiles
         });
-        setEditingId(created.id);
       }
 
       setSaveSuccess(true);
+
+      // Make daily notebook written place empty for new writing
+      setEntryTitle('');
+      setEntryContent('');
+      setEditingId(null);
       setSelectedFiles([]);
-      setTimeout(() => setSaveSuccess(false), 2500);
-      loadDiaryEntries();
+      setFilePreviews([]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+
+      setTimeout(() => setSaveSuccess(false), 3500);
+      loadDiaryEntries(false);
     } catch (err) {
       console.error('Save diary error', err);
     } finally {
@@ -199,19 +217,49 @@ export default function DiaryPage() {
       {/* TAB 1: WRITE NOTEBOOK PAGE */}
       {activeTab === 'write' ? (
         <form onSubmit={handleSave} className="space-y-4 animate-in fade-in duration-200">
+          {/* Success Notification */}
+          {saveSuccess && (
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs font-serif flex items-center justify-between animate-in fade-in slide-in-from-top-1">
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                <span className="font-semibold">Entry saved! Notebook page is now empty and ready for new writing.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('archive')}
+                className="text-xs font-bold underline hover:no-underline ml-2 text-emerald-700 dark:text-emerald-300 cursor-pointer"
+              >
+                View in Archive &rarr;
+              </button>
+            </div>
+          )}
+
           {/* Paper Notebook Container */}
           <div className="paper-card notebook-ruled p-6 sm:p-10 relative overflow-hidden shadow-lg border-stone-200/90 dark:border-stone-800">
             {/* Red left margin decorative rule */}
             <div className="absolute top-0 bottom-0 left-8 sm:left-12 w-px bg-rose-300/40 dark:bg-rose-900/30 pointer-events-none" />
 
             {/* Notebook Header */}
-            <div className="pl-6 sm:pl-8 pb-4 border-b border-stone-200/50 dark:border-stone-800/60 flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
+            <div className="pl-6 sm:pl-8 pb-4 border-b border-stone-200/50 dark:border-stone-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <span className="font-serif text-lg sm:text-xl font-bold text-stone-900 dark:text-stone-100">
                 {formattedHeaderDate}
               </span>
-              <span className="font-handwriting text-base text-amber-700 dark:text-amber-400">
-                {editingId ? 'Editing entry' : 'Personal Entry'}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-handwriting text-base text-amber-700 dark:text-amber-400">
+                  {editingId ? 'Editing saved entry' : 'New Page'}
+                </span>
+                {(entryTitle || entryContent || editingId) && (
+                  <button
+                    type="button"
+                    onClick={handleNewEntry}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-serif rounded-lg border border-stone-300 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 transition cursor-pointer"
+                    title="Clear notebook for a new entry"
+                  >
+                    <Plus className="w-3 h-3 text-amber-600" />
+                    <span>Clear / New</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Content inputs */}
