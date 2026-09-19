@@ -3,111 +3,89 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --bg-primary: #f8fafc;
+    --bg-surface: #ffffff;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --border-subtle: #e2e8f0;
+  }
+
+  .dark {
+    --bg-primary: #090d16;
+    --bg-surface: #111827;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --border-subtle: #1f2937;
+  }
+
   body {
-    font-family: 'Inter', sans-serif;
-  }
-  
-  h1, h2, h3, .font-antique {
-    font-family: 'Cormorant Garamond', Georgia, serif;
-  }
-
-  .font-cinzel {
-    font-family: 'Cinzel', serif;
-  }
-
-  .font-handwriting {
-    font-family: 'Caveat', cursive, serif;
+    font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    @apply bg-slate-50 text-slate-900 dark:bg-[#090d16] dark:text-slate-100 antialiased min-h-screen transition-colors duration-150;
   }
 }
 
-/* Antique Parchment Styling */
-.parchment-texture {
-  background: 
-    radial-gradient(ellipse at center, rgba(250, 245, 230, 0.98) 0%, rgba(235, 222, 195, 0.94) 65%, rgba(200, 180, 145, 0.98) 100%),
-    repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(139, 90, 43, 0.07) 28px);
-  box-shadow: 
-    inset 0 0 70px rgba(92, 64, 51, 0.25),
-    inset 0 0 120px rgba(44, 24, 16, 0.35),
-    0 25px 50px -12px rgba(0, 0, 0, 0.65);
+/* Reusable Clean SaaS Cards */
+.saas-card {
+  @apply bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800/80 rounded-card shadow-sm hover:shadow transition-all duration-200;
 }
 
-.dark-parchment {
-  background: 
-    radial-gradient(ellipse at center, rgba(35, 29, 24, 0.96) 0%, rgba(26, 21, 17, 0.98) 70%, rgba(15, 12, 10, 1) 100%),
-    repeating-linear-gradient(0deg, transparent, transparent 29px, rgba(212, 175, 55, 0.04) 30px);
-  box-shadow: 
-    inset 0 0 80px rgba(0, 0, 0, 0.7),
-    0 25px 60px -15px rgba(0, 0, 0, 0.9);
+.saas-card-interactive {
+  @apply bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800/80 rounded-card shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200;
 }
 
-/* Tragic Candle Flickering Glow */
-@keyframes candleFlicker {
-  0%, 100% { opacity: 0.85; filter: drop-shadow(0 0 15px rgba(245, 158, 11, 0.4)); }
-  25% { opacity: 0.95; filter: drop-shadow(0 0 25px rgba(245, 158, 11, 0.65)); }
-  50% { opacity: 0.78; filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.35)); }
-  75% { opacity: 0.92; filter: drop-shadow(0 0 22px rgba(245, 158, 11, 0.55)); }
+/* Subtle clean input */
+.saas-input {
+  @apply w-full px-3.5 py-2.5 bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition;
 }
 
-.candle-glow {
-  animation: candleFlicker 4s infinite ease-in-out;
-}
-
-/* Custom subtle scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: #0d1117;
-}
-::-webkit-scrollbar-thumb {
-  background: #2b3648;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #3e4d66;
-}
-
-/* Modern TimeMemory SaaS Glassmorphic Surfaces */
-.glass-panel {
-  background: rgba(13, 17, 23, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.glass-card {
-  background: rgba(18, 23, 32, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.glass-card:hover {
-  border-color: rgba(245, 158, 11, 0.35);
-  box-shadow: 0 20px 40px -15px rgba(245, 158, 11, 0.12), 0 0 0 1px rgba(245, 158, 11, 0.2);
-  transform: translateY(-2px);
-}
-
-.timeline-spine {
+/* Timeline Vertical Line */
+.timeline-track {
   position: relative;
 }
 
-.timeline-spine::before {
+.timeline-track::before {
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 20px;
+  left: 19px;
   width: 2px;
-  background: linear-gradient(180deg, rgba(245, 158, 11, 0.6) 0%, rgba(245, 158, 11, 0.2) 50%, rgba(255, 255, 255, 0.05) 100%);
+  background: #e2e8f0;
 }
 
-@media (min-width: 768px) {
-  .timeline-spine-centered::before {
-    left: 50%;
-    transform: translateX(-50%);
+.dark .timeline-track::before {
+  background: #1e293b;
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

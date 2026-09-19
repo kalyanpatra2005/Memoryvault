@@ -1,120 +1,136 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { vaultEngine } from '../services/vaultEngine';
+import { supabase } from '../services/supabaseClient';
 
-const AuthContext = createContext(null);
+const AuthContext = createContext({
+  user: null,
+  session: null,
+  loading: true,
+  login: async () => {},
+  register: async () => {},
+  logout: async () => {},
+  resetPassword: async () => {},
+  updateProfile: async () => {},
+});
 
-export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(() => localStorage.getItem('vault_token') || null);
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('vault_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (token) {
-      // Offline/Local tokens do not require server validation
-      if (token.startsWith('vault_session_') || token.startsWith('vault_guest_token_')) {
-        setLoading(false);
-        return;
-      }
-
-      // Validate token with server
-      fetch('/api/auth/me', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(async res => {
-          try {
-            const text = await res.text();
-            if (res.ok && text && (text.trim().startsWith('{') || text.trim().startsWith('['))) {
-              return JSON.parse(text.trim());
-            }
-          } catch (e) {}
-          throw new Error('Session expired or backend unavailable');
-        })
-        .then(data => {
-          if (data && data.user) {
-            setUser(data.user);
-            localStorage.setItem('vault_user', JSON.stringify(data.user));
-            vaultEngine.syncLocalToCloud(token, data.user.id, data.user.email).catch(() => {});
-          }
-        })
-        .catch(() => {
-          // If server is temporarily unreachable, preserve existing session if user data exists
-          const saved = localStorage.getItem('vault_user');
-          if (!saved) {
-            logout();
-          }
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
-  }, [token]);
-
-  const login = (newToken, userData) => {
-    setToken(newToken);
-    setUser(userData);
-    localStorage.setItem('vault_token', newToken);
-    localStorage.setItem('vault_user', JSON.stringify(userData));
-    if (userData?.id) {
-      vaultEngine.syncLocalToCloud(newToken, userData.id, userData.email).catch(() => {});
-    }
-  };
-
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem('vault_token');
-    localStorage.removeItem('vault_user');
-  };
-
-  const authFetch = async (url, options = {}) => {
-    const headers = {
-      ...(options.headers || {}),
-      Authorization: `Bearer ${token}`
-    };
-    try {
-      const res = await fetch(url, { ...options, headers });
-      
-      // Override res.json to safely parse and NEVER throw HTML syntax errors
-      res.json = async () => {
-        try {
-          const text = await res.text();
-          if (!text || !text.trim()) return {};
-          const trimmed = text.trim();
-          if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-            return {};
-          }
-          return JSON.parse(trimmed);
-        } catch (e) {
-          return {};
+    // 1. Check active session
+    async function getInitialSession() {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (!error && session) {
+          setSession(session);
+          setUser(session.user);
         }
-      };
-
-      return res;
-    } catch (networkErr) {
-      return {
-        ok: false,
-        status: 503,
-        statusText: 'Network Unavailable',
-        headers: new Headers(),
-        json: async () => ({})
-      };
+      } catch (err) {
+        console.error('Error retrieving session:', err);
+      } finally {
+        setLoading(false);
+      }
     }
+
+    getInitialSession();
+
+    // 2. Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, newSession) => {
+        setSession(newSession);
+        setUser(newSession?.user || null);
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, []);
+
+  const login = async ({ email, password }) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+    if (error) throw error;
+    setUser(data.user);
+    setSession(data.session);
+    return data;
+  };
+
+  const register = async ({ fullName, email, password }) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password,
+      options: {
+        data: {
+          full_name: fullName.trim(),
+        },
+      },
+    });
+    if (error) throw error;
+    if (data.user) {
+      setUser(data.user);
+      setSession(data.session);
+    }
+    return data;
+  };
+
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.error('Logout error', e);
+    } finally {
+      setUser(null);
+      setSession(null);
+    }
+  };
+
+  const resetPassword = async (email) => {
+    const { data, error } = await supabase.auth.resetPasswordForEmail(
+      email.trim().toLowerCase(),
+      {
+        redirectTo: window.location.origin + '/reset-password',
+      }
+    );
+    if (error) throw error;
+    return data;
+  };
+
+  const updateProfile = async ({ fullName, avatarUrl }) => {
+    const { data, error } = await supabase.auth.updateUser({
+      data: {
+        full_name: fullName,
+        avatar_url: avatarUrl,
+      },
+    });
+    if (error) throw error;
+    if (data.user) setUser(data.user);
+    return data;
   };
 
   return (
-    <AuthContext.Provider value={{ token, user, login, logout, authFetch, loading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        loading,
+        login,
+        register,
+        logout,
+        resetPassword,
+        updateProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+export function useAuth() {
+  return useContext(AuthContext);
+}

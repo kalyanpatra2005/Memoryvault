@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -7,31 +8,38 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        serif: ['Georgia', 'Cambria', 'Baskerville', 'serif'],
-        vintage: ['"Playfair Display"', 'Georgia', 'serif'],
-        handwritten: ['"Caveat"', '"Dancing Script"', 'cursive', 'Georgia']
+        sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
       colors: {
-        parchment: {
-          50: '#faf7f0',
-          100: '#f4efe0',
-          200: '#e8ddc4',
-          300: '#dac7a3',
-          400: '#c5ab7d',
-          500: '#b1915e',
-          600: '#9b7a4b',
-          700: '#7d5f3c',
-          800: '#644c33',
-          900: '#4e3b2b',
+        brand: {
+          50: '#eef2ff',
+          100: '#e0e7ff',
+          200: '#c7d2fe',
+          300: '#a5b4fc',
+          400: '#818cf8',
+          500: '#6366f1',
+          600: '#4f46e5',
+          700: '#4338ca',
+          800: '#3730a3',
+          900: '#312e81',
+          950: '#1e1b4b',
         },
-        vault: {
-          950: '#07090e',
-          900: '#0d1117',
-          850: '#121720',
-          800: '#161c28',
-          700: '#232d3f',
-          accent: '#d4af37'
+        amberbrand: {
+          50: '#fffbeb',
+          100: '#fef3c7',
+          200: '#fde68a',
+          300: '#fcd34d',
+          400: '#fbbf24',
+          500: '#f59e0b',
+          600: '#d97706',
+          700: '#b45309',
+          800: '#92400e',
+          900: '#78350f',
         }
+      },
+      borderRadius: {
+        'card': '14px',
+        'modal': '16px'
       }
     },
   },
