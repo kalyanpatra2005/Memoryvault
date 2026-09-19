@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { vaultEngine, safeFetchJson, isVideoMedia } from '../services/vaultEngine';
+import MemoryDetailModal from '../components/MemoryDetailModal';
 import { 
   Film, Image as ImageIcon, UploadCloud, Trash2, Eye, ShieldCheck, 
-  Lock, Play, Calendar, HardDrive, Download, AlertTriangle, CheckCircle 
+  Lock, Play, Calendar, HardDrive, Download, AlertTriangle, CheckCircle, 
+  Sparkles, Filter, Plus 
 } from 'lucide-react';
 
 export default function MediaVaultPage() {
@@ -37,7 +39,7 @@ export default function MediaVaultPage() {
       let pCount = 0;
       let vCount = 0;
       allItems.forEach(i => {
-        if (i.media_type === 'video') vCount++;
+        if (isVideoMedia(i)) vCount++;
         else pCount++;
       });
       setPhotoCount(pCount);
@@ -46,12 +48,12 @@ export default function MediaVaultPage() {
 
       let filtered = allItems;
       if (filterType === 'photo') {
-        filtered = allItems.filter(i => i.media_type === 'photo');
+        filtered = allItems.filter(i => !isVideoMedia(i));
       } else if (filterType === 'video') {
-        filtered = allItems.filter(i => i.media_type === 'video');
+        filtered = allItems.filter(i => isVideoMedia(i));
       }
 
-      filtered.sort((a, b) => new Date(b.created_at || b.memory_date) - new Date(a.created_at || a.memory_date));
+      filtered.sort((a, b) => new Date(b.created_at || b.memory_date || 0) - new Date(a.created_at || a.memory_date || 0));
       setMediaList(filtered);
     } catch (err) {
       console.error('Failed to load media', err);
@@ -78,13 +80,13 @@ export default function MediaVaultPage() {
           uploadCaption.trim() || files[i].name,
           new Date().toISOString().split('T')[0],
           '',
-          null,
+          'Personal',
           user?.email || ''
         );
         uploadedCount++;
       }
 
-      setUploadSuccess(`${uploadedCount} memory item(s) permanently vaulted.`);
+      setUploadSuccess(`${uploadedCount} moment(s) permanently preserved to cloud vault.`);
       setUploadCaption('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       await fetchMedia();
@@ -124,7 +126,6 @@ export default function MediaVaultPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
-  // Build safe URL for streaming or local data URL
   const getMediaUrl = (itemOrId) => {
     if (!itemOrId) return '';
     if (typeof itemOrId === 'object') {
@@ -141,30 +142,30 @@ export default function MediaVaultPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in text-stone-200">
       
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-stone-800">
         <div>
           <div className="flex items-center space-x-2 text-xs font-mono text-amber-400 mb-1">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>ENCRYPTED & PERMANENT VAULT</span>
+            <span>ENCRYPTED & PERMANENT CLOUD ARCHIVE</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-bold font-antique text-stone-100">
+          <h1 className="text-3xl sm:text-4xl font-bold font-sans text-stone-100 tracking-tight">
             Photos & Videos Vault
           </h1>
-          <p className="text-xs sm:text-sm text-stone-400 font-serif mt-1">
+          <p className="text-xs sm:text-sm text-stone-400 mt-1">
             Your personal visual history. Every file stays here permanently unless you choose to delete it.
           </p>
         </div>
 
         {/* Filter Pills */}
-        <div className="flex items-center bg-stone-900 p-1 rounded-xl border border-stone-800">
+        <div className="flex items-center bg-stone-900 p-1 rounded-xl border border-stone-800 self-start md:self-auto">
           <button
             onClick={() => setFilterType('all')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
               filterType === 'all'
-                ? 'bg-amber-900/60 text-amber-200 border border-amber-700/50 shadow-sm'
+                ? 'bg-amber-950 text-amber-300 border border-amber-800/80 shadow-sm'
                 : 'text-stone-400 hover:text-stone-200'
             }`}
           >
@@ -174,7 +175,7 @@ export default function MediaVaultPage() {
             onClick={() => setFilterType('photo')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center space-x-1 ${
               filterType === 'photo'
-                ? 'bg-amber-900/60 text-amber-200 border border-amber-700/50 shadow-sm'
+                ? 'bg-amber-950 text-amber-300 border border-amber-800/80 shadow-sm'
                 : 'text-stone-400 hover:text-stone-200'
             }`}
           >
@@ -185,7 +186,7 @@ export default function MediaVaultPage() {
             onClick={() => setFilterType('video')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center space-x-1 ${
               filterType === 'video'
-                ? 'bg-amber-900/60 text-amber-200 border border-amber-700/50 shadow-sm'
+                ? 'bg-amber-950 text-amber-300 border border-amber-800/80 shadow-sm'
                 : 'text-stone-400 hover:text-stone-200'
             }`}
           >
@@ -196,31 +197,31 @@ export default function MediaVaultPage() {
       </div>
 
       {/* UPLOAD BOX */}
-      <div className="mb-10 p-6 sm:p-8 rounded-2xl bg-stone-900/90 border border-amber-900/30 shadow-xl">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4">
+      <div className="p-6 sm:p-8 rounded-3xl bg-stone-900/60 border border-stone-800 backdrop-blur-md shadow-xl">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-5">
           <div>
-            <h2 className="text-lg font-bold font-antique text-amber-100 flex items-center space-x-2">
+            <h2 className="text-lg font-bold font-sans text-stone-100 flex items-center space-x-2">
               <UploadCloud className="w-5 h-5 text-amber-400" />
               <span>Deposit Memories into the Vault</span>
             </h2>
-            <p className="text-xs text-stone-400">
+            <p className="text-xs text-stone-400 mt-0.5">
               Upload photos (JPG, PNG, GIF, WebP) and videos (MP4, WebM, MOV) up to 250MB each.
             </p>
           </div>
-          <div className="flex items-center space-x-1.5 text-[11px] text-amber-400 bg-amber-950/60 px-3 py-1 rounded-full border border-amber-800/40">
+          <div className="flex items-center space-x-1.5 text-[11px] text-amber-400 bg-amber-950/60 px-3 py-1 rounded-full border border-amber-800/40 font-mono">
             <Lock className="w-3 h-3 text-emerald-400" />
-            <span>Private: Only accessible to your account</span>
+            <span>Strict User Account Privacy</span>
           </div>
         </div>
 
         {uploadError && (
-          <div className="mb-4 p-3 rounded-lg bg-rose-950/80 border border-rose-800 text-rose-200 text-xs">
+          <div className="mb-4 p-3.5 rounded-xl bg-rose-950/70 border border-rose-800/80 text-rose-200 text-xs">
             {uploadError}
           </div>
         )}
 
         {uploadSuccess && (
-          <div className="mb-4 p-3 rounded-lg bg-emerald-950/80 border border-emerald-800 text-emerald-200 text-xs flex items-center space-x-2">
+          <div className="mb-4 p-3.5 rounded-xl bg-emerald-950/70 border border-emerald-800/80 text-emerald-200 text-xs flex items-center space-x-2">
             <CheckCircle className="w-4 h-4 text-emerald-400" />
             <span>{uploadSuccess}</span>
           </div>
@@ -233,7 +234,7 @@ export default function MediaVaultPage() {
               placeholder="Add a permanent memory caption or note (optional)..."
               value={uploadCaption}
               onChange={(e) => setUploadCaption(e.target.value)}
-              className="w-full px-4 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-sm text-stone-200 placeholder-stone-500 focus:outline-none focus:border-amber-500"
+              className="w-full px-4 py-2.5 bg-stone-950/80 border border-stone-700/80 rounded-xl text-xs sm:text-sm text-stone-200 placeholder-stone-500 focus:outline-none focus:border-amber-400 transition"
             />
           </div>
           <div>
@@ -249,11 +250,11 @@ export default function MediaVaultPage() {
             />
             <label
               htmlFor="file-upload-input"
-              className={`w-full py-2.5 px-4 bg-gradient-to-r from-amber-700 via-amber-600 to-amber-700 hover:from-amber-600 hover:to-amber-500 text-stone-950 font-bold rounded-xl text-sm shadow-lg shadow-amber-950 flex items-center justify-center space-x-2 cursor-pointer transition border border-amber-400/40 ${
+              className={`w-full py-2.5 px-4 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:brightness-110 text-stone-950 font-bold rounded-xl text-xs sm:text-sm shadow-lg shadow-amber-950/50 flex items-center justify-center space-x-2 cursor-pointer transition border border-amber-400/40 ${
                 uploading ? 'opacity-50 pointer-events-none' : ''
               }`}
             >
-              <UploadCloud className="w-4 h-4" />
+              <UploadCloud className="w-4 h-4 text-stone-950" />
               <span>{uploading ? 'Encrypting & Vaulting...' : 'Select Photos or Videos'}</span>
             </label>
           </div>
@@ -268,9 +269,9 @@ export default function MediaVaultPage() {
       ) : mediaList.length === 0 ? (
         <div className="p-16 text-center rounded-3xl bg-stone-900/30 border border-stone-800 text-stone-400">
           <Film className="w-12 h-12 text-stone-600 mx-auto mb-3" />
-          <h3 className="text-lg font-antique font-bold text-stone-300">Your visual vault is empty</h3>
-          <p className="text-xs text-stone-500 mt-1 max-w-sm mx-auto font-serif">
-            Deposit your old photos, heartfelt family videos, or treasured snapshots above. They will stay safe forever.
+          <h3 className="text-lg font-bold text-stone-300">Your visual vault is empty</h3>
+          <p className="text-xs text-stone-500 mt-1 max-w-sm mx-auto">
+            Deposit your photos, family videos, or treasured snapshots above. They stay safe forever.
           </p>
         </div>
       ) : (
@@ -283,10 +284,10 @@ export default function MediaVaultPage() {
               <div
                 key={item.id}
                 onClick={() => setSelectedMedia(item)}
-                className="group relative rounded-2xl bg-stone-900 border border-amber-900/20 hover:border-amber-600/50 overflow-hidden shadow-xl cursor-pointer transition-all duration-300 flex flex-col justify-between"
+                className="glass-card rounded-2xl overflow-hidden cursor-pointer group transition-all duration-300 flex flex-col justify-between"
               >
                 {/* Media Preview Container */}
-                <div className="relative aspect-square bg-stone-950 flex items-center justify-center overflow-hidden">
+                <div className="relative aspect-square bg-stone-950 flex items-center justify-center overflow-hidden border-b border-stone-800/80">
                   {isVideo ? (
                     <div className="relative w-full h-full bg-stone-950 flex items-center justify-center">
                       <video
@@ -295,11 +296,11 @@ export default function MediaVaultPage() {
                         className="w-full h-full object-cover opacity-75 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
                       />
                       <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/20 transition-colors">
-                        <div className="w-12 h-12 rounded-full bg-amber-600/90 text-stone-950 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                        <div className="w-12 h-12 rounded-full bg-amber-500/90 text-stone-950 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                           <Play className="w-5 h-5 fill-stone-950 translate-x-0.5" />
                         </div>
                       </div>
-                      <span className="absolute top-3 left-3 px-2 py-0.5 rounded bg-black/70 text-amber-300 text-[10px] font-mono flex items-center space-x-1 border border-amber-700/40">
+                      <span className="absolute top-3 left-3 px-2 py-0.5 rounded-md bg-black/70 text-amber-300 text-[10px] font-mono flex items-center space-x-1 border border-amber-500/30">
                         <Film className="w-3 h-3" />
                         <span>VIDEO</span>
                       </span>
@@ -312,8 +313,8 @@ export default function MediaVaultPage() {
                         loading="lazy"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
-                      <span className="absolute top-3 left-3 px-2 py-0.5 rounded bg-black/70 text-amber-300 text-[10px] font-mono flex items-center space-x-1 border border-amber-700/40">
-                        <ImageIcon className="w-3 h-3" />
+                      <span className="absolute top-3 left-3 px-2 py-0.5 rounded-md bg-black/70 text-stone-200 text-[10px] font-mono flex items-center space-x-1 border border-white/10">
+                        <ImageIcon className="w-3 h-3 text-amber-400" />
                         <span>PHOTO</span>
                       </span>
                     </div>
@@ -321,14 +322,14 @@ export default function MediaVaultPage() {
 
                   {/* Hover Overlay with Delete & Open */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-3">
-                    <span className="text-amber-200 text-xs font-serif flex items-center space-x-1">
+                    <span className="text-amber-300 text-xs flex items-center space-x-1 font-medium">
                       <Eye className="w-3.5 h-3.5" />
                       <span>View Full</span>
                     </span>
                     <button
                       onClick={(e) => handleDeleteMedia(item.id, e)}
                       title="Permanently Delete Memory"
-                      className="p-1.5 rounded-lg bg-rose-950/80 text-rose-300 hover:bg-rose-900 border border-rose-800 transition"
+                      className="p-1.5 rounded-lg bg-rose-950/90 text-rose-300 hover:bg-rose-900 border border-rose-800 transition"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -336,11 +337,11 @@ export default function MediaVaultPage() {
                 </div>
 
                 {/* Details Footer */}
-                <div className="p-3.5 bg-stone-900 text-xs">
-                  <p className="font-semibold text-stone-200 truncate font-antique text-sm">
+                <div className="p-4 bg-stone-900/60 text-xs">
+                  <p className="font-semibold text-stone-100 truncate text-sm">
                     {item.caption || item.original_name}
                   </p>
-                  <div className="mt-1 flex items-center justify-between text-[11px] text-stone-400">
+                  <div className="mt-1 flex items-center justify-between text-[11px] text-stone-400 font-mono">
                     <span>{new Date(item.created_at || item.memory_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
                     <span>{formatFileSize(item.size_bytes || item.file_size)}</span>
                   </div>
@@ -351,78 +352,13 @@ export default function MediaVaultPage() {
         </div>
       )}
 
-      {/* FULLSCREEN LIGHTBOX & PLAYER MODAL */}
-      {selectedMedia && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-          <div className="relative w-full max-w-4xl bg-stone-900 border border-amber-900/60 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-stone-800 bg-stone-950">
-              <div className="flex items-center space-x-2">
-                <span className="px-2 py-0.5 rounded text-[10px] uppercase font-mono bg-amber-950 text-amber-300 border border-amber-800/60">
-                  {isVideoMedia(selectedMedia) ? 'video' : 'photo'}
-                </span>
-                <span className="text-sm font-antique font-bold text-stone-200 truncate max-w-md">
-                  {selectedMedia.caption || selectedMedia.original_name}
-                </span>
-              </div>
-              <button
-                onClick={() => setSelectedMedia(null)}
-                className="text-stone-400 hover:text-stone-100 p-1 rounded-lg hover:bg-stone-800 transition"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Media Content */}
-            <div className="flex-1 bg-black flex items-center justify-center overflow-auto p-2">
-              {isVideoMedia(selectedMedia) ? (
-                <video
-                  controls
-                  autoPlay
-                  className="max-h-[65vh] w-auto max-w-full rounded"
-                  src={getMediaUrl(selectedMedia)}
-                />
-              ) : (
-                <img
-                  src={getMediaUrl(selectedMedia)}
-                  alt={selectedMedia.caption || selectedMedia.original_name}
-                  className="max-h-[65vh] w-auto max-w-full object-contain rounded"
-                />
-              )}
-            </div>
-
-            {/* Modal Footer Controls */}
-            <div className="p-4 bg-stone-950 border-t border-stone-800 flex flex-wrap items-center justify-between gap-3 text-xs">
-              <div className="text-stone-400">
-                <p>Saved on: {new Date(selectedMedia.created_at || selectedMedia.memory_date).toLocaleString()}</p>
-                <p className="text-[11px] text-stone-500">
-                  Size: {formatFileSize(selectedMedia.size_bytes || selectedMedia.file_size)} • Format: {selectedMedia.mime_type}
-                </p>
-              </div>
-
-              <div className="flex items-center space-x-3">
-                <a
-                  href={getMediaUrl(selectedMedia)}
-                  download={selectedMedia.original_name || 'memory_vault_download'}
-                  className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 flex items-center space-x-1.5 transition"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download File</span>
-                </a>
-                <button
-                  onClick={() => handleDeleteMedia(selectedMedia.id)}
-                  className="px-3 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-200 border border-rose-800 flex items-center space-x-1.5 transition"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Permanently Delete</span>
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
+      {/* Memory Detail Modal */}
+      <MemoryDetailModal
+        memory={selectedMedia}
+        onClose={() => setSelectedMedia(null)}
+        onDelete={(id) => handleDeleteMedia(id)}
+        token={token}
+      />
 
     </div>
   );

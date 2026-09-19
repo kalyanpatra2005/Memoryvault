@@ -1,184 +1,159 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ShieldCheck, BookOpen, Film, Clock, User, LogOut, KeyRound } from 'lucide-react';
+import BrandLogo from './BrandLogo';
+import { 
+  LayoutDashboard, GitCommit, Film, BookOpen, Clock, 
+  Plus, LogOut, ShieldCheck, User, Menu, X, Sparkles 
+} from 'lucide-react';
 
-export default function Navbar({ activeTab, setActiveTab, onOpenAuth, onGuestEnter }) {
+export default function Navbar({ 
+  activeTab, 
+  setActiveTab, 
+  onOpenAuth, 
+  onGuestEnter,
+  onOpenAddMemory 
+}) {
   const { user, logout } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'timeline', label: 'Timeline', icon: GitCommit },
+    { id: 'media', label: 'Photos & Videos', icon: Film },
+    { id: 'diary', label: 'Secret Diary', icon: BookOpen },
+    { id: 'capsules', label: 'Time Capsules', icon: Clock },
+  ];
 
   return (
-    <header className="sticky top-0 z-40 bg-vault-950/90 backdrop-blur-md border-b border-amber-900/30 text-stone-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        
-        {/* Logo & Brand */}
-        <div 
-          onClick={() => setActiveTab(user ? 'dashboard' : 'landing')}
-          className="flex items-center space-x-3 cursor-pointer group"
-        >
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-600 via-amber-700 to-amber-950 flex items-center justify-center shadow-lg shadow-amber-900/40 border border-amber-500/30 group-hover:border-amber-400/60 transition-all">
-            <KeyRound className="w-5 h-5 text-amber-200 group-hover:rotate-12 transition-transform duration-300" />
+    <>
+      {/* Top Navbar */}
+      <header className="sticky top-0 z-40 bg-stone-950/85 backdrop-blur-xl border-b border-white/5 text-stone-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
+          
+          {/* Brand Emblem */}
+          <div 
+            onClick={() => setActiveTab(user ? 'dashboard' : 'landing')}
+            className="cursor-pointer group py-1"
+          >
+            <BrandLogo size="md" />
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="font-cinzel tracking-wider text-lg font-bold bg-gradient-to-r from-amber-200 via-amber-100 to-stone-400 bg-clip-text text-transparent">
-                MEMORY VAULT
-              </span>
-              <span className="text-[10px] uppercase tracking-widest bg-amber-950/80 text-amber-400 px-1.5 py-0.5 rounded border border-amber-800/60">
-                100% Private
-              </span>
-            </div>
-            <p className="text-[10px] text-stone-400 tracking-wider font-mono">TIME CAPSULE & ARCHIVE</p>
-          </div>
-        </div>
 
-        {/* Navigation for authenticated user */}
-        {user ? (
-          <nav className="hidden md:flex items-center space-x-1 lg:space-x-2">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                activeTab === 'dashboard' 
-                  ? 'bg-amber-950/60 text-amber-200 border border-amber-700/50' 
-                  : 'text-stone-300 hover:text-amber-200 hover:bg-stone-900/50'
-              }`}
-            >
-              Vault Hub
-            </button>
-
-            <button
-              onClick={() => setActiveTab('diary')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center space-x-1.5 transition-all ${
-                activeTab === 'diary' 
-                  ? 'bg-amber-900/40 text-amber-100 border border-amber-600/60 shadow-inner' 
-                  : 'text-stone-300 hover:text-amber-200 hover:bg-stone-900/50'
-              }`}
-            >
-              <BookOpen className="w-4 h-4 text-amber-400" />
-              <span>Tragic Diary</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('media')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center space-x-1.5 transition-all ${
-                activeTab === 'media' 
-                  ? 'bg-amber-950/60 text-amber-200 border border-amber-700/50' 
-                  : 'text-stone-300 hover:text-amber-200 hover:bg-stone-900/50'
-              }`}
-            >
-              <Film className="w-4 h-4 text-amber-400" />
-              <span>Photos & Videos</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('capsules')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center space-x-1.5 transition-all ${
-                activeTab === 'capsules' 
-                  ? 'bg-amber-950/60 text-amber-200 border border-amber-700/50' 
-                  : 'text-stone-300 hover:text-amber-200 hover:bg-stone-900/50'
-              }`}
-            >
-              <Clock className="w-4 h-4 text-amber-400" />
-              <span>Time Capsule</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                activeTab === 'settings' 
-                  ? 'bg-amber-950/60 text-amber-200 border border-amber-700/50' 
-                  : 'text-stone-300 hover:text-amber-200 hover:bg-stone-900/50'
-              }`}
-            >
-              Security
-            </button>
-          </nav>
-        ) : null}
-
-        {/* User Status / Auth Buttons */}
-        <div className="flex items-center space-x-3">
+          {/* Center Navigation for authenticated users */}
           {user ? (
-            <div className="flex items-center space-x-3">
-              <div className="hidden sm:flex flex-col text-right">
-                <span className="text-xs font-medium text-stone-200">{user?.name?.replace(/\.+$/, '')}</span>
-                <span className="text-[10px] text-amber-400/80 flex items-center justify-end space-x-1">
-                  <ShieldCheck className="w-3 h-3 text-emerald-400 inline" />
-                  <span>Permanent Storage</span>
-                </span>
+            <nav className="hidden md:flex items-center gap-1 lg:gap-1.5 p-1 rounded-2xl bg-stone-900/60 border border-white/5">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all duration-200 ${
+                      isActive
+                        ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-950/40'
+                        : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/50'
+                    }`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-amber-400' : 'text-stone-400'}`} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          ) : null}
+
+          {/* Right Action Area */}
+          <div className="flex items-center gap-3">
+            {user ? (
+              <>
+                {/* + Add Memory Primary Button */}
+                <button
+                  onClick={onOpenAddMemory}
+                  className="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:brightness-110 text-stone-950 font-bold text-xs shadow-md shadow-amber-950/40 border border-amber-400/40 transition hover:scale-[1.02]"
+                >
+                  <Plus className="w-4 h-4 text-stone-950" />
+                  <span>Add Memory</span>
+                </button>
+
+                {/* User Profile Pill & Logout */}
+                <div className="flex items-center gap-2.5 pl-2">
+                  <div className="hidden lg:flex flex-col text-right">
+                    <span className="text-xs font-bold text-stone-200">
+                      {user?.name ? user.name.replace(/\.+$/, '') : 'Keeper'}
+                    </span>
+                    <span className="text-[10px] text-emerald-400 font-mono flex items-center justify-end gap-1">
+                      <ShieldCheck className="w-3 h-3" />
+                      <span>Cloud Synced</span>
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={logout}
+                    title="Sign Out of TimeMemory"
+                    className="p-2.5 rounded-xl bg-stone-900 border border-stone-800 text-stone-400 hover:text-rose-400 hover:border-rose-900/50 transition"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  onClick={onGuestEnter}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs text-stone-300 hover:text-amber-200 bg-stone-900/60 hover:bg-stone-900 border border-stone-800 font-medium transition"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Instant Demo</span>
+                </button>
+                <button
+                  onClick={() => onOpenAuth('login')}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-stone-200 hover:text-amber-300 bg-stone-900/80 hover:bg-stone-800 border border-stone-700/80 transition"
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => onOpenAuth('register')}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:brightness-110 text-stone-950 shadow-md shadow-amber-950/40 border border-amber-400/40 transition"
+                >
+                  Create Archive
+                </button>
               </div>
-              <button
-                onClick={logout}
-                title="Seal & Exit Vault"
-                className="p-2 rounded-lg bg-stone-900/80 text-stone-400 hover:text-rose-300 hover:bg-stone-800/80 border border-stone-800 transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={onGuestEnter}
-                className="hidden sm:inline-flex px-3 py-1.5 rounded-lg text-xs text-stone-300 hover:text-amber-200 hover:bg-stone-900/80 border border-stone-800 transition-all font-medium items-center space-x-1"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Instant Vault</span>
-              </button>
-              <button
-                onClick={() => onOpenAuth('login')}
-                className="px-3.5 py-1.5 rounded-lg text-sm text-amber-200 hover:text-amber-100 hover:bg-stone-900/80 border border-amber-800/50 transition-all font-medium"
-              >
-                Sign In
-              </button>
-              <button
-                onClick={() => onOpenAuth('register')}
-                className="px-4 py-1.5 rounded-lg text-sm bg-gradient-to-r from-amber-700 via-amber-600 to-amber-700 text-stone-900 font-semibold hover:brightness-110 shadow-md shadow-amber-950/30 transition-all border border-amber-500/40"
-              >
-                Create Vault
-              </button>
-            </div>
-          )}
+            )}
+          </div>
+
         </div>
+      </header>
 
-      </div>
-
-      {/* Mobile Nav Bar */}
+      {/* Mobile Bottom Navigation Bar (Fixed for authentic mobile app feel) */}
       {user && (
-        <div className="md:hidden flex items-center justify-around border-t border-stone-800/60 bg-vault-950/95 py-2 px-1">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-stone-950/95 backdrop-blur-2xl border-t border-stone-800/80 px-2 py-1.5 flex items-center justify-around shadow-2xl">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center p-1 rounded-xl transition ${
+                  isActive ? 'text-amber-400 font-bold' : 'text-stone-400 hover:text-stone-200'
+                }`}
+              >
+                <Icon className={`w-5 h-5 mb-0.5 ${isActive ? 'text-amber-400' : 'text-stone-400'}`} />
+                <span className="text-[10px] tracking-tight">{item.label.split(' ')[0]}</span>
+              </button>
+            );
+          })}
+
+          {/* Quick Floating Add button in mobile nav */}
           <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`flex flex-col items-center text-xs py-1 px-2 rounded ${activeTab === 'dashboard' ? 'text-amber-300' : 'text-stone-400'}`}
+            onClick={onOpenAddMemory}
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-full bg-gradient-to-tr from-amber-600 to-amber-400 text-stone-950 shadow-lg shadow-amber-500/20"
+            title="Add Memory"
           >
-            <span>Hub</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('diary')}
-            className={`flex flex-col items-center text-xs py-1 px-2 rounded ${activeTab === 'diary' ? 'text-amber-300 font-bold' : 'text-stone-400'}`}
-          >
-            <BookOpen className="w-4 h-4 mb-0.5" />
-            <span>Diary</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('media')}
-            className={`flex flex-col items-center text-xs py-1 px-2 rounded ${activeTab === 'media' ? 'text-amber-300' : 'text-stone-400'}`}
-          >
-            <Film className="w-4 h-4 mb-0.5" />
-            <span>Vault</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('capsules')}
-            className={`flex flex-col items-center text-xs py-1 px-2 rounded ${activeTab === 'capsules' ? 'text-amber-300' : 'text-stone-400'}`}
-          >
-            <Clock className="w-4 h-4 mb-0.5" />
-            <span>Capsule</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex flex-col items-center text-xs py-1 px-2 rounded ${activeTab === 'settings' ? 'text-amber-300' : 'text-stone-400'}`}
-          >
-            <ShieldCheck className="w-4 h-4 mb-0.5" />
-            <span>Security</span>
+            <Plus className="w-5 h-5 stroke-[2.5]" />
           </button>
         </div>
       )}
-    </header>
+    </>
   );
 }
