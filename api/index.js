@@ -521,8 +521,13 @@ function dobsMatch(d1, d2) {
 router.post('/auth/reset-password', async (req, res) => {
   try {
     const { identifier, dob, newPassword } = req.body;
-    if (!identifier || !newPassword) {
-      return res.status(400).json({ error: 'Please enter your email and new password.' });
+    if (!identifier) {
+      return res.status(400).json({ error: 'Please enter your email address.' });
+    }
+    if (!newPassword) {
+      return res.status(400).json({ 
+        error: 'Please refresh this page (Ctrl + Shift + R or Ctrl + F5) to load the updated Reset Password form with Date of Birth and New Password fields.' 
+      });
     }
     if (newPassword.length < 6) {
       return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
