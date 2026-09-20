@@ -152,15 +152,34 @@ export function createCloudSupabaseClient() {
         return { error: null };
       },
 
-      async resetPasswordForEmail(email) {
+      async resetPasswordForEmail(email, options = {}) {
         try {
+          const payload = typeof email === 'object'
+            ? { 
+                identifier: email.email || email.identifier, 
+                dob: email.dob, 
+                newPassword: email.newPassword || email.password 
+              }
+            : { 
+                identifier: email, 
+                dob: options.dob, 
+                newPassword: options.newPassword || options.password 
+              };
+
           const res = await fetch('/api/auth/reset-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ identifier: email })
+            body: JSON.stringify(payload)
           });
           const json = await res.json();
-          return { data: json, error: res.ok ? null : { message: json.error } };
+          if (!res.ok) {
+            return { data: null, error: { message: json.error || 'Password reset failed' } };
+          }
+          if (json.token && json.user) {
+            saveSession(json.user, json.token);
+            notifyAuth('SIGNED_IN', json.session || { user: json.user, access_token: json.token });
+          }
+          return { data: json, error: null };
         } catch (err) {
           return { data: null, error: { message: err.message } };
         }

@@ -165,14 +165,24 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const resetPassword = async (email) => {
-    const { data, error } = await supabase.auth.resetPasswordForEmail(
-      email.trim().toLowerCase(),
-      {
-        redirectTo: window.location.origin + '/reset-password',
-      }
-    );
+  const resetPassword = async (payload) => {
+    let email = '';
+    let options = {};
+    if (typeof payload === 'string') {
+      email = payload.trim().toLowerCase();
+    } else if (typeof payload === 'object') {
+      email = (payload.email || payload.identifier || '').trim().toLowerCase();
+      options = payload;
+    }
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, options);
     if (error) throw error;
+    if (data?.token && data?.user) {
+      setUser(data.user);
+      setSession(data.session || { access_token: data.token, token: data.token, user: data.user });
+      const initialSettings = resolveSettingsForUser(data.user);
+      setSettings(initialSettings);
+      applySettingsToDOM(initialSettings);
+    }
     return data;
   };
 

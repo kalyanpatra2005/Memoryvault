@@ -409,19 +409,27 @@ router.post('/auth/signup', handleRegister);
 
 router.post('/auth/login', async (req, res) => {
   try {
-    const identifier = (req.body.identifier || req.body.email || '').trim().toLowerCase();
+    const rawInput = (req.body.identifier || req.body.email || req.body.phone || '').trim();
     const password = req.body.password;
-    if (!identifier || !password) {
+    if (!rawInput || !password) {
       return res.status(400).json({ error: 'Email/Phone and Password are required.' });
     }
+    const cleanEmail = rawInput.toLowerCase();
+    const cleanPhone = rawInput.replace(/\D/g, '');
     const activePool = getPool();
 
     if (activePool) {
-      const q = await activePool.query('SELECT * FROM users WHERE LOWER(email) = $1 OR phone = $2', [identifier, req.body.identifier?.trim() || '']);
-      let user = q.rows[0];
+      let user = null;
+      if (cleanEmail.includes('@')) {
+        const q = await activePool.query('SELECT * FROM users WHERE LOWER(email) = $1', [cleanEmail]);
+        user = q.rows[0];
+      } else if (cleanPhone && cleanPhone.length >= 7) {
+        const all = await activePool.query('SELECT * FROM users WHERE phone IS NOT NULL AND phone != \'\'');
+        user = all.rows.find(u => phonesMatch(u.phone, cleanPhone));
+      }
       if (!user) {
         const all = await activePool.query('SELECT * FROM users');
-        user = all.rows.find(u => u.email.toLowerCase() === identifier || phonesMatch(u.phone, req.body.identifier));
+        user = all.rows.find(u => (u.email && u.email.toLowerCase() === cleanEmail) || phonesMatch(u.phone, rawInput));
       }
       if (!user) {
         return res.status(401).json({ error: 'No account found with this email or phone number.' });
@@ -460,7 +468,7 @@ router.post('/auth/login', async (req, res) => {
         session: { access_token: token, token, user: safe }
       });
     } else {
-      const user = memStore.users.find(u => u.email.toLowerCase() === identifier || phonesMatch(u.phone, req.body.identifier));
+      const user = memStore.users.find(u => u.email.toLowerCase() === cleanEmail || phonesMatch(u.phone, rawInput));
       if (!user) {
         return res.status(401).json({ error: 'No account found with this email or phone number.' });
       }
@@ -485,38 +493,93 @@ router.post('/auth/login', async (req, res) => {
   }
 });
 
+function phonesMatch(p1, p2) {
+  if (!p1 || !p2) return false;
+  const digits1 = String(p1).replace(/[^0-9]/g, '');
+  const digits2 = String(p2).replace(/[^0-9]/g, '');
+  if (!digits1 || !digits2) return false;
+  if (digits1.length < 7 || digits2.length < 7) return false;
+  return Boolean(digits1 === digits2 || digits1.endsWith(digits2) || digits2.endsWith(digits1));
+}
+
+function dobsMatch(d1, d2) {
+  if (!d1 || !d2) return false;
+  const s1 = String(d1).trim();
+  const s2 = String(d2).trim();
+  if (s1 === s2) return true;
+  const digits1 = s1.replace(/[^0-9]/g, '');
+  const digits2 = s2.replace(/[^0-9]/g, '');
+  if (digits1 === digits2 && digits1.length >= 6) return true;
+  const date1 = new Date(s1);
+  const date2 = new Date(s2);
+  if (!isNaN(date1.getTime()) && !isNaN(date2.getTime())) {
+    return date1.toISOString().split('T')[0] === date2.toISOString().split('T')[0];
+  }
+  return false;
+}
+
 router.post('/auth/reset-password', async (req, res) => {
   try {
     const { identifier, dob, newPassword } = req.body;
-    if (!identifier || !dob || !newPassword) {
-      return res.status(400).json({ error: 'Identifier, Date of Birth, and New Password required.' });
+    if (!identifier || !newPassword) {
+      return res.status(400).json({ error: 'Please enter your email and new password.' });
     }
-    const cleanId = identifier.trim().toLowerCase();
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+    }
+    const rawId = identifier.trim();
+    const cleanEmail = rawId.toLowerCase();
     const newHash = bcrypt.hashSync(newPassword, 10);
     const activePool = getPool();
 
     if (activePool) {
-      const all = await activePool.query('SELECT * FROM users');
-      const user = all.rows.find(u => u.email.toLowerCase() === cleanId || phonesMatch(u.phone, identifier));
-      if (!user) return res.status(404).json({ error: 'No account found with this email or phone number.' });
-      if (user.dob && user.dob.trim() !== dob.trim()) {
-        return res.status(401).json({ error: 'Date of Birth does not match account records.' });
+      let user = null;
+      if (cleanEmail.includes('@')) {
+        const q = await activePool.query('SELECT * FROM users WHERE LOWER(email) = $1', [cleanEmail]);
+        user = q.rows[0];
       }
-      await activePool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, user.id]);
+      if (!user) {
+        const all = await activePool.query('SELECT * FROM users');
+        user = all.rows.find(u => (u.email && u.email.toLowerCase() === cleanEmail) || phonesMatch(u.phone, rawId));
+      }
+      if (!user) return res.status(404).json({ error: 'No account found with this email address.' });
+      
+      // If the account has a registered Date of Birth, verify it
+      if (user.dob && user.dob.trim()) {
+        if (!dob || !dobsMatch(user.dob, dob)) {
+          return res.status(401).json({ error: 'Date of Birth does not match the account records.' });
+        }
+      }
+
+      await activePool.query('UPDATE users SET password_hash = $1 WHERE id = $2 OR LOWER(email) = $3', [newHash, user.id, cleanEmail]);
       const safe = { id: String(user.id), name: user.name, email: user.email, phone: user.phone, dob: user.dob };
       const token = jwt.sign({ id: safe.id, email: safe.email, name: safe.name }, JWT_SECRET, { expiresIn: '30d' });
-      return res.json({ message: 'Password reset successfully.', token, user: safe });
+      return res.json({ 
+        message: 'Password reset successfully.', 
+        token, 
+        access_token: token,
+        user: safe, 
+        session: { access_token: token, token, user: safe } 
+      });
     } else {
-      const user = memStore.users.find(u => u.email.toLowerCase() === cleanId || phonesMatch(u.phone, identifier));
-      if (!user) return res.status(404).json({ error: 'No account found with this email or phone number.' });
-      if (user.dob && user.dob.trim() !== dob.trim()) {
-        return res.status(401).json({ error: 'Date of Birth does not match account records.' });
+      const user = memStore.users.find(u => (u.email && u.email.toLowerCase() === cleanEmail) || phonesMatch(u.phone, rawId));
+      if (!user) return res.status(404).json({ error: 'No account found with this email address.' });
+      if (user.dob && user.dob.trim()) {
+        if (!dob || !dobsMatch(user.dob, dob)) {
+          return res.status(401).json({ error: 'Date of Birth does not match the account records.' });
+        }
       }
       user.password_hash = newHash;
       const safe = { ...user, id: String(user.id) };
       delete safe.password_hash;
       const token = jwt.sign({ id: safe.id, email: safe.email, name: safe.name }, JWT_SECRET, { expiresIn: '30d' });
-      return res.json({ message: 'Password reset successfully.', token, user: safe });
+      return res.json({ 
+        message: 'Password reset successfully.', 
+        token, 
+        access_token: token,
+        user: safe, 
+        session: { access_token: token, token, user: safe } 
+      });
     }
   } catch (err) {
     return res.status(500).json({ error: err.message });
